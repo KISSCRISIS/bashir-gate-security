@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تحقق من الصلاحية | بوابة الطوارئ - مستشفى البشير</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-client.js"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center px-4 py-10">
+
+  <div class="w-full max-w-md">
+
+    <div class="text-center mb-6">
+      <div class="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center text-2xl glass chrome-edge mb-3">🩺</div>
+      <h1 class="font-black text-xl">بوابة الطوارئ — مستشفى البشير</h1>
+      <p class="text-xs text-[var(--text-2)] mt-1">تحقق الكادر الطبي</p>
+    </div>
+
+    <!-- الكود منتهي الصلاحية -->
+    <div id="expiredView" class="hidden glass chrome-edge rounded-[28px] p-8 text-center">
+      <div class="text-5xl mb-4">⏳</div>
+      <h2 class="font-black text-lg mb-2">انتهت صلاحية هذا الكود</h2>
+      <p class="text-[var(--text-2)] leading-relaxed text-sm">
+        الكود يتجدد كل دقيقة لأسباب أمنية. يرجى الرجوع لشاشة الحارس
+        وفتح الكاميرا على الكود الظاهر حالياً.
+      </p>
+    </div>
+
+    <!-- إدخال الرقم الوظيفي -->
+    <form id="idForm" class="glass chrome-edge rounded-[28px] p-7 flex flex-col gap-4">
+      <div>
+        <label class="flabel">الرقم الوظيفي</label>
+        <input id="employeeIdInput" type="text" inputmode="numeric" class="field mono ltr-num" placeholder="EMP001" required>
+      </div>
+      <button type="submit" id="idSubmitBtn" class="btn btn-primary py-4 rounded-2xl text-base font-bold">
+        تحقّق من صلاحيتي
+      </button>
+    </form>
+
+    <!-- نموذج التسجيل لأول مرة -->
+    <form id="registerForm" class="hidden glass chrome-edge rounded-[28px] p-7 flex flex-col gap-4">
+      <div class="text-center mb-2">
+        <div class="text-3xl mb-2">📝</div>
+        <h2 class="font-black text-base">تسجيل أول مرة</h2>
+        <p class="text-xs text-[var(--text-2)] mt-1">رقمك الوظيفي غير مسجّل بعد. عبّي بياناتك وراح تحصل على دخول مؤقت فوراً لحين مراجعة الإدارة.</p>
+      </div>
+      <div>
+        <label class="flabel">الاسم الكامل</label>
+        <input id="regFullName" type="text" class="field" required>
+      </div>
+      <div>
+        <label class="flabel">الرقم الوظيفي</label>
+        <input id="regEmployeeId" type="text" class="field mono ltr-num" readonly>
+      </div>
+      <div>
+        <label class="flabel">رقم الهاتف</label>
+        <input id="regPhone" type="tel" inputmode="numeric" class="field mono ltr-num" placeholder="07XXXXXXXX" required>
+      </div>
+      <div>
+        <label class="flabel">القسم / التخصص</label>
+        <input id="regDepartment" type="text" class="field" placeholder="مثال: الطوارئ، الجراحة..." required>
+      </div>
+      <button type="submit" id="regSubmitBtn" class="btn btn-success py-4 rounded-2xl text-base font-bold">
+        تسجيل والحصول على دخول مؤقت
+      </button>
+      <button type="button" id="cancelRegisterBtn" class="btn btn-ghost py-3 rounded-2xl text-sm">رجوع</button>
+    </form>
+
+    <!-- نتيجة التحقق -->
+    <div id="outcomeView" class="hidden glass chrome-edge rounded-[28px] p-8 text-center">
+      <div id="outcomeIcon" class="text-6xl mb-4"></div>
+      <h2 id="outcomeTitle" class="font-black text-xl mb-2"></h2>
+      <p id="outcomeSub" class="text-[var(--text-2)] leading-relaxed text-sm"></p>
+    </div>
+
+  </div>
+
+<script>
+/* ===================== فحص صلاحية التوكن (الكود متجدد كل 60 ثانية) ===================== */
+const TOKEN_MAX_AGE_MS = 90 * 1000; // هامش أمان 90 ثانية
+
+function isTokenValid(){
+  const token = new URLSearchParams(window.location.search).get('token');
+  if(!token) return false;
+  try{
+    const decoded = atob(token);
+    const ts = parseInt(decoded.split('.')[0], 10);
+    if(!ts) return false;
+    return (Date.now() - ts) < TOKEN_MAX_AGE_MS;
+  }catch(e){
+    return false;
+  }
+}
+
+function showView(id){
+  ['expiredView','idForm','registerForm','outcomeView'].forEach(v=>{
+    document.getElementById(v).classList.toggle('hidden', v !== id);
+  });
+}
+
+if(!isTokenValid()){
+  showView('expiredView');
+}
+
+/* ===================== دوال مساعدة لتحديث حالة البوابة ===================== */
+async function pushGateResult(employeeId, status){
+  await sb.from('system_status').update({
+    current_scan_status: status,
+    gate_open: status !== 'DENIED',
+    updated_at: new Date().toISOString(),
+  }).eq('id',1);
+
+  await sb.from('gate_access_logs').insert({
+    employee_id: employeeId,
+    action_result: status,
+  });
+}
+
+function showOutcome({icon, title, sub, tone}){
+  showView('outcomeView');
+  document.getElementById('outcomeIcon').textContent = icon;
+  document.getElementById('outcomeTitle').textContent = title;
+  document.getElementById('outcomeTitle').style.color = tone || 'var(--text-1)';
+  document.getElementById('outcomeSub').textContent = sub;
+}
+
+/* ===================== التحقق من الرقم الوظيفي ===================== */
+let currentEmployeeId = null;
+
+document.getElementById('idForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn = document.getElementById('idSubmitBtn');
+  const employeeId = document.getElementById('employeeIdInput').value.trim();
+  if(!employeeId) return;
+  currentEmployeeId = employeeId;
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري التحقق...`;
+
+  try{
+    const { data, error } = await sb.rpc('check_registration_status', { p_employee_id: employeeId });
+    if(error) throw error;
+
+    if(!data || data.length === 0){
+      // غير مسجل أبداً -> نموذج تسجيل أول مرة
+      document.getElementById('regEmployeeId').value = employeeId;
+      showView('registerForm');
+      return;
+    }
+
+    const record = data[0];
+
+    if(record.status === 'APPROVED'){
+      const status = record.access_level === 'FULL_ACCESS' ? 'ALLOWED' : 'LIMITED';
+      await pushGateResult(employeeId, status);
+      if(status === 'ALLOWED'){
+        showOutcome({icon:'✅', title:'تم منحك الدخول', sub:'توجّه للحارس الآن، الشاشة عنده تظهر الموافقة.', tone:'var(--c-allowed)'});
+      }else{
+        showOutcome({icon:'⚠️', title:'دخول محدود', sub:'مسموح لك بدخول محدود بالقسم/الوردية. توجّه للحارس.', tone:'var(--c-limited)'});
+      }
+    } else if(record.status === 'PENDING'){
+      // طلبه قيد المراجعة - نمنحه دخول مؤقت محدود في كل مرة لحين البت بطلبه
+      await pushGateResult(employeeId, 'LIMITED');
+      showOutcome({icon:'⏳', title:'طلبك قيد المراجعة', sub:'تم منحك دخولاً مؤقتاً محدوداً لحين مراجعة الإدارة لبياناتك. توجّه للحارس.', tone:'var(--c-limited)'});
+    } else {
+      // REJECTED
+      await pushGateResult(employeeId, 'DENIED');
+      showOutcome({icon:'⛔', title:'تم رفض الدخول', sub:'طلب تصريحك مرفوض. يرجى التواصل مع إدارة الموارد البشرية.', tone:'var(--c-denied)'});
+    }
+  }catch(err){
+    console.error(err);
+    showToast('حدث خطأ، حاول مرة أخرى','error');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+
+/* ===================== تسجيل أول مرة ===================== */
+document.getElementById('cancelRegisterBtn').addEventListener('click', ()=>{
+  showView('idForm');
+});
+
+document.getElementById('registerForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn = document.getElementById('regSubmitBtn');
+  const payload = {
+    employee_id: document.getElementById('regEmployeeId').value.trim(),
+    full_name: document.getElementById('regFullName').value.trim(),
+    phone: document.getElementById('regPhone').value.trim(),
+    department: document.getElementById('regDepartment').value.trim(),
+    status: 'PENDING',
+  };
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري التسجيل...`;
+
+  try{
+    const { error } = await sb.from('pending_registrations').insert(payload);
+    if(error){
+      if(error.code === '23505'){
+        showToast('هذا الرقم الوظيفي مسجّل مسبقاً، حاول التحقق مباشرة','warning');
+        showView('idForm');
+        return;
+      }
+      throw error;
+    }
+
+    await pushGateResult(payload.employee_id, 'LIMITED');
+    showOutcome({
+      icon:'🎉',
+      title:'تم استلام طلبك',
+      sub:'مُنحت دخولاً مؤقتاً محدوداً الآن. بطاقتك الدائمة قيد مراجعة الإدارة. توجّه للحارس.',
+      tone:'var(--c-limited)',
+    });
+  }catch(err){
+    console.error(err);
+    showToast('تعذّر إكمال التسجيل، حاول مجدداً','error');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+</script>
+</body>
+</html>

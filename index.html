@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>بوابة الطوارئ | مستشفى البشير</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="assets/supabase-client.js"></script>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center px-4 py-8 relative overflow-x-hidden">
+
+  <!-- الشريط العلوي -->
+  <header class="w-full max-w-5xl flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl chrome-edge glass">🏥</div>
+      <div>
+        <h1 class="font-black text-lg leading-tight">بوابة الطوارئ</h1>
+        <p class="text-xs text-[var(--text-2)]">مستشفى البشير — نقطة تحكم الحارس</p>
+      </div>
+    </div>
+    <div class="text-left">
+      <div id="clock" class="mono ltr-num text-sm text-[var(--text-2)]">--:--:--</div>
+      <div id="gateState" class="text-xs font-bold text-[var(--text-3)] mt-0.5">البوابة: مغلقة</div>
+    </div>
+  </header>
+
+  <!-- البطاقة الرئيسية -->
+  <main id="mainShell" class="status-shell status-waiting glass chrome-edge w-full max-w-5xl rounded-[28px] p-6 md:p-10 flex flex-col items-center gap-6 transition-all">
+
+    <!-- حالة WAITING: عرض الـ QR -->
+    <div id="waitingView" class="w-full flex flex-col md:flex-row items-center gap-8 justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <div class="relative">
+          <div class="bg-white p-4 rounded-3xl shadow-2xl" id="qrWrapper">
+            <div id="qrcode"></div>
+          </div>
+          <div class="absolute -top-3 -left-3 w-12 h-12 rounded-full glass chrome-edge flex items-center justify-center mono text-sm font-bold" id="qrTimer">60</div>
+        </div>
+        <p class="text-[var(--text-2)] text-sm font-bold">امسح الكود لإثبات صلاحيتك</p>
+      </div>
+
+      <div class="flex flex-col gap-4 text-center md:text-right max-w-sm">
+        <div class="dot bg-[var(--c-waiting)] mx-auto md:mx-0" style="width:14px;height:14px;border-radius:50%; box-shadow:0 0 18px var(--c-waiting);"></div>
+        <h2 class="text-3xl md:text-4xl font-black">جاهز للفحص</h2>
+        <p class="text-[var(--text-2)] leading-relaxed">
+          الكود يتجدد تلقائياً كل دقيقة لمنع تصويره أو مشاركته. اطلب من الكادر الطبي مسح الكود
+          فوراً عند الوصول للبوابة.
+        </p>
+      </div>
+    </div>
+
+    <!-- حالة النتيجة: ALLOWED / LIMITED / DENIED -->
+    <div id="resultView" class="hidden w-full flex flex-col items-center gap-3 py-8">
+      <div id="resultIcon" class="text-7xl md:text-8xl"></div>
+      <div class="status-pill">
+        <span class="dot" id="resultDot"></span>
+        <span id="resultText"></span>
+      </div>
+      <p id="resultSub" class="text-[var(--text-2)] font-bold mono ltr-num"></p>
+    </div>
+
+  </main>
+
+  <!-- زر البلاغ الصاعق -->
+  <div class="w-full max-w-5xl mt-8">
+    <button id="violationBtn" class="btn btn-violation w-full py-7 md:py-9 rounded-[28px] text-2xl md:text-3xl font-black flex items-center justify-center gap-3">
+      <span>📸</span>
+      <span>إبلاغ عن حالة تصوير أو عبور مخالفة</span>
+    </button>
+  </div>
+
+  <div class="dev-signature wave-text mono" id="devSig"></div>
+
+<script>
+/* ===================== تهيئة عامة ===================== */
+const QR_REFRESH_SECONDS = 60;
+const RESULT_DISPLAY_SECONDS = 8;
+
+let qrInstance = null;
+let qrCountdown = QR_REFRESH_SECONDS;
+let qrTimerInterval = null;
+let resultRevertTimeout = null;
+
+/* توقيع المطوّر بتأثير الموجة */
+(function renderSignature(){
+  const text = 'Dev: Dr. Alaa Aqrabawi';
+  const wrap = document.getElementById('devSig');
+  text.split('').forEach((ch,i)=>{
+    const span = document.createElement('span');
+    span.textContent = ch;
+    span.style.animationDelay = (i*0.05)+'s';
+    wrap.appendChild(span);
+  });
+})();
+
+/* الساعة الحية */
+function tickClock(){
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('ar-JO',{hour12:false});
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+/* ===================== توليد QR متجدد كل دقيقة ===================== */
+function buildVerifyUrl(){
+  const ts = Date.now();
+  const session = Math.random().toString(36).slice(2,10);
+  const token = btoa(`${ts}.${session}`);
+  const url = new URL('verify.html', window.location.href);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+function renderQR(){
+  const container = document.getElementById('qrcode');
+  container.innerHTML = '';
+  qrInstance = new QRCode(container, {
+    text: buildVerifyUrl(),
+    width: 220,
+    height: 220,
+    colorDark: '#070d1a',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H,
+  });
+  qrCountdown = QR_REFRESH_SECONDS;
+}
+
+function startQrTimer(){
+  clearInterval(qrTimerInterval);
+  qrTimerInterval = setInterval(()=>{
+    qrCountdown -= 1;
+    const timerEl = document.getElementById('qrTimer');
+    if(timerEl) timerEl.textContent = Math.max(qrCountdown,0);
+    if(qrCountdown <= 0){
+      renderQR();
+    }
+  },1000);
+}
+
+/* ===================== عرض النتائج ===================== */
+const STATUS_CONFIG = {
+  ALLOWED:  { icon:'✅', label:'مسموح بالدخول', color:'var(--c-allowed)', shell:'status-allowed' },
+  LIMITED:  { icon:'⚠️', label:'دخول محدود',     color:'var(--c-limited)', shell:'status-limited' },
+  DENIED:   { icon:'⛔',  label:'مرفوض الدخول',  color:'var(--c-denied)',  shell:'status-denied'  },
+};
+
+function showWaiting(){
+  clearTimeout(resultRevertTimeout);
+  document.getElementById('mainShell').className = 'status-shell status-waiting glass chrome-edge w-full max-w-5xl rounded-[28px] p-6 md:p-10 flex flex-col items-center gap-6 transition-all';
+  document.getElementById('waitingView').classList.remove('hidden');
+  document.getElementById('resultView').classList.add('hidden');
+  document.getElementById('gateState').textContent = 'البوابة: مغلقة';
+  renderQR();
+}
+
+function showResult(status){
+  const cfg = STATUS_CONFIG[status];
+  if(!cfg) return;
+  clearTimeout(resultRevertTimeout);
+
+  document.getElementById('mainShell').className = `status-shell ${cfg.shell} glass chrome-edge w-full max-w-5xl rounded-[28px] p-6 md:p-10 flex flex-col items-center gap-6 transition-all`;
+  document.getElementById('waitingView').classList.add('hidden');
+  document.getElementById('resultView').classList.remove('hidden');
+
+  document.getElementById('resultIcon').textContent = cfg.icon;
+  document.getElementById('resultText').textContent = cfg.label;
+  document.getElementById('resultText').style.color = cfg.color;
+  document.getElementById('resultDot').style.background = cfg.color;
+  document.getElementById('resultDot').style.boxShadow = `0 0 16px ${cfg.color}`;
+  document.getElementById('resultSub').textContent = new Date().toLocaleTimeString('ar-JO',{hour12:false});
+
+  document.getElementById('gateState').textContent = status === 'DENIED' ? 'البوابة: مغلقة' : 'البوابة: مفتوحة';
+
+  // الرجوع للوضع الجاهز تلقائياً بعد فترة عرض النتيجة
+  resultRevertTimeout = setTimeout(async ()=>{
+    await sb.from('system_status').update({
+      current_scan_status:'WAITING',
+      gate_open:false,
+      updated_at:new Date().toISOString(),
+    }).eq('id',1);
+  }, RESULT_DISPLAY_SECONDS*1000);
+}
+
+function renderFromStatusRow(row){
+  if(!row) return;
+  if(row.current_scan_status === 'WAITING'){
+    showWaiting();
+  } else {
+    showResult(row.current_scan_status);
+  }
+}
+
+/* ===================== الاتصال بقاعدة البيانات ===================== */
+async function loadInitialStatus(){
+  const { data, error } = await sb.from('system_status').select('*').eq('id',1).maybeSingle();
+  if(error){ console.error(error); showWaiting(); return; }
+  if(!data){
+    await sb.from('system_status').insert({ id:1, gate_open:false, current_scan_status:'WAITING' });
+    showWaiting();
+  } else {
+    renderFromStatusRow(data);
+  }
+}
+
+function subscribeRealtime(){
+  sb.channel('guard-system-status')
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'system_status', filter:'id=eq.1' }, (payload)=>{
+      renderFromStatusRow(payload.new);
+    })
+    .subscribe();
+}
+
+/* ===================== زر البلاغ الصاعق ===================== */
+document.getElementById('violationBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('violationBtn');
+  btn.disabled = true;
+  const original = btn.innerHTML;
+  btn.innerHTML = `<span class="spinner"></span><span>جاري إرسال البلاغ...</span>`;
+
+  try{
+    await sb.from('violations').insert({ resolved:false });
+    // إغلاق فوري للبوابة كإجراء احترازي لحين تدخل الإدارة
+    await sb.from('system_status').update({
+      current_scan_status:'DENIED', gate_open:false, updated_at:new Date().toISOString(),
+    }).eq('id',1);
+    showToast('تم إرسال البلاغ للإدارة فوراً ✅','success');
+  }catch(e){
+    console.error(e);
+    showToast('تعذّر إرسال البلاغ، حاول مجدداً','error');
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+});
+
+/* ===================== تشغيل ===================== */
+startQrTimer();
+loadInitialStatus();
+subscribeRealtime();
+</script>
+</body>
+</html>

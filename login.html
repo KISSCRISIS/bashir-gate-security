@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>دخول المشرفين | بوابة الطوارئ - مستشفى البشير</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-client.js"></script>
+
+<style>
+  body{
+    background:
+      radial-gradient(circle at 20% 20%, rgba(44,99,201,0.22), transparent 45%),
+      radial-gradient(circle at 80% 75%, rgba(91,157,255,0.14), transparent 45%),
+      linear-gradient(160deg, #050a16 0%, #0a1530 60%, #060b18 100%);
+  }
+  .login-card{
+    animation: card-float 6s ease-in-out infinite;
+  }
+  @keyframes card-float{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-8px); }
+  }
+  .floating-sig{
+    animation: sig-float 4.5s ease-in-out infinite;
+  }
+  @keyframes sig-float{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-5px); }
+  }
+  .lock-orb{
+    width:64px; height:64px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #2c63c9, #050a16 75%);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 50px rgba(44,99,201,0.55), inset 0 0 0 1px rgba(255,255,255,0.15);
+    font-size:26px;
+  }
+</style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center px-4 py-10">
+
+  <div class="login-card w-full max-w-sm glass chrome-edge rounded-[28px] p-8">
+    <div class="flex flex-col items-center mb-7 gap-3">
+      <div class="lock-orb">🔐</div>
+      <div class="text-center">
+        <h1 class="font-black text-lg">دخول المشرفين</h1>
+        <p class="text-xs text-[var(--text-2)] mt-1">بوابة الطوارئ — مستشفى البشير</p>
+      </div>
+    </div>
+
+    <form id="loginForm" class="flex flex-col gap-4">
+      <div>
+        <label class="flabel">الرقم الوظيفي</label>
+        <input id="loginEmployeeId" type="text" class="field mono ltr-num" placeholder="EMP001" required>
+      </div>
+      <div>
+        <label class="flabel">رقم الهاتف</label>
+        <input id="loginPhone" type="tel" inputmode="numeric" class="field mono ltr-num" placeholder="07XXXXXXXX" required>
+      </div>
+
+      <p id="loginError" class="hidden text-sm font-bold text-[var(--c-denied)] text-center"></p>
+
+      <button type="submit" id="loginBtn" class="btn btn-primary py-4 rounded-2xl text-base font-bold mt-1">
+        دخول
+      </button>
+    </form>
+  </div>
+
+  <div class="floating-sig wave-text mono mt-8 text-sm text-[var(--text-2)]" id="floatSig"></div>
+
+<script>
+(function renderFloatingSignature(){
+  const text = 'Dr. Alaa Aqrabawi';
+  const wrap = document.getElementById('floatSig');
+  text.split('').forEach((ch,i)=>{
+    const span = document.createElement('span');
+    span.textContent = ch;
+    span.style.animationDelay = (i*0.06)+'s';
+    wrap.appendChild(span);
+  });
+})();
+
+// إذا كانت هناك جلسة فعّالة أصلاً، توجيه مباشر للوحة التحكم
+if(getAdminSession()){
+  window.location.replace('admin_dashboard.html');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+
+  const employeeId = document.getElementById('loginEmployeeId').value.trim();
+  const phone = document.getElementById('loginPhone').value.trim();
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري التحقق...`;
+
+  try{
+    const { data, error } = await sb.rpc('verify_admin_login', {
+      p_employee_id: employeeId,
+      p_phone: phone,
+    });
+    if(error) throw error;
+
+    if(data && data.length > 0){
+      saveAdminSession({ employeeId: data[0].employee_id, role: data[0].role });
+      window.location.href = 'admin_dashboard.html';
+    } else {
+      errEl.textContent = 'الرقم الوظيفي أو رقم الهاتف غير صحيح';
+      errEl.classList.remove('hidden');
+    }
+  }catch(err){
+    console.error(err);
+    errEl.textContent = 'حدث خطأ بالاتصال، حاول مجدداً';
+    errEl.classList.remove('hidden');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+/* ==========================================================================
+   نظام أمن بوابة الطوارئ - مستشفى البشير
+   الهوية البصرية المشتركة (Chrome / Dark Control-Room Theme)
+   Dev: Dr. Alaa Aqrabawi
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+:root{
+  /* قاعدة الخلفية */
+  --bg-deep:#040810;
+  --bg-deep-2:#070d1a;
+  --bg-panel:rgba(13,20,36,0.62);
+  --bg-panel-solid:#0b1322;
+  --border-soft:rgba(148,163,184,0.18);
+
+  /* لمسة الكروم (الفولاذ المصقول) */
+  --chrome-1:#8b9bb0;
+  --chrome-2:#e7ecf2;
+  --chrome-3:#4b5870;
+
+  /* حالات النظام */
+  --c-allowed:#19ffa1;
+  --c-allowed-dim:#0a7a52;
+  --c-limited:#ffa228;
+  --c-limited-dim:#a3590a;
+  --c-denied:#ff2d4d;
+  --c-denied-dim:#8a0d22;
+  --c-waiting:#5b9dff;
+
+  --text-1:#eef2f8;
+  --text-2:#9aa7bd;
+  --text-3:#5c6985;
+
+  --radius-lg:28px;
+  --radius-md:18px;
+  --radius-sm:10px;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(circle at 18% 12%, rgba(91,157,255,0.10), transparent 42%),
+    radial-gradient(circle at 85% 88%, rgba(25,255,161,0.06), transparent 45%),
+    linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-deep-2) 100%);
+  color:var(--text-1);
+  font-family:'Tajawal', sans-serif;
+  direction:rtl;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'JetBrains Mono', monospace; direction:ltr; unicode-bidi:plaintext;}
+
+/* خط تقني دائمًا LTR للأرقام/الأكواد */
+.ltr-num{direction:ltr; unicode-bidi:embed; font-family:'JetBrains Mono', monospace;}
+
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-track{background:var(--bg-deep);}
+::-webkit-scrollbar-thumb{background:var(--chrome-3); border-radius:10px;}
+
+a{color:inherit;}
+
+/* ----------------------------- لوحات زجاجية ----------------------------- */
+.glass{
+  background:var(--bg-panel);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+}
+
+/* حدّ كروم متدرّج */
+.chrome-edge{
+  position:relative;
+  border-radius:var(--radius-lg);
+}
+.chrome-edge::before{
+  content:'';
+  position:absolute; inset:0;
+  border-radius:inherit;
+  padding:1.5px;
+  background:linear-gradient(135deg, var(--chrome-2), var(--chrome-3) 35%, var(--chrome-1) 60%, var(--chrome-2));
+  -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  opacity:.55;
+  pointer-events:none;
+}
+
+/* ----------------------------- حالات الشاشة ----------------------------- */
+.status-shell{
+  transition:box-shadow .6s ease, border-color .6s ease, background-color .6s ease;
+  border:1px solid var(--border-soft);
+}
+
+.status-waiting{
+  box-shadow:0 0 60px -10px rgba(91,157,255,0.18) inset, 0 0 40px rgba(91,157,255,0.08);
+  border-color:rgba(91,157,255,0.25);
+}
+.status-allowed{
+  background:radial-gradient(circle at 50% 0%, rgba(25,255,161,0.16), transparent 60%), var(--bg-panel);
+  box-shadow:0 0 120px -10px rgba(25,255,161,0.45) inset, 0 0 90px rgba(25,255,161,0.35);
+  border-color:var(--c-allowed);
+  animation:pulse-allowed 1.6s ease-in-out infinite;
+}
+.status-limited{
+  background:radial-gradient(circle at 50% 0%, rgba(255,162,40,0.16), transparent 60%), var(--bg-panel);
+  box-shadow:0 0 120px -10px rgba(255,162,40,0.45) inset, 0 0 90px rgba(255,162,40,0.35);
+  border-color:var(--c-limited);
+  animation:pulse-limited 1.6s ease-in-out infinite;
+}
+.status-denied{
+  background:radial-gradient(circle at 50% 0%, rgba(255,45,77,0.20), transparent 60%), var(--bg-panel);
+  box-shadow:0 0 130px -10px rgba(255,45,77,0.55) inset, 0 0 100px rgba(255,45,77,0.45);
+  border-color:var(--c-denied);
+  animation:pulse-denied .9s ease-in-out infinite;
+}
+
+@keyframes pulse-allowed{
+  0%,100%{box-shadow:0 0 120px -10px rgba(25,255,161,0.45) inset, 0 0 90px rgba(25,255,161,0.35);}
+  50%{box-shadow:0 0 150px -10px rgba(25,255,161,0.7) inset, 0 0 130px rgba(25,255,161,0.55);}
+}
+@keyframes pulse-limited{
+  0%,100%{box-shadow:0 0 120px -10px rgba(255,162,40,0.45) inset, 0 0 90px rgba(255,162,40,0.35);}
+  50%{box-shadow:0 0 150px -10px rgba(255,162,40,0.7) inset, 0 0 130px rgba(255,162,40,0.55);}
+}
+@keyframes pulse-denied{
+  0%,100%{box-shadow:0 0 130px -10px rgba(255,45,77,0.55) inset, 0 0 100px rgba(255,45,77,0.45);}
+  50%{box-shadow:0 0 170px -10px rgba(255,45,77,0.85) inset, 0 0 150px rgba(255,45,77,0.65);}
+}
+
+/* ----------------------------- نص الحالة ----------------------------- */
+.status-pill{
+  display:inline-flex; align-items:center; gap:10px;
+  padding:10px 26px; border-radius:999px;
+  font-weight:900; font-size:clamp(28px,5vw,52px);
+  letter-spacing:.5px;
+}
+.dot{width:14px; height:14px; border-radius:50%; flex:none;}
+
+/* ----------------------------- أزرار ----------------------------- */
+.btn{
+  border-radius:var(--radius-md);
+  font-weight:700;
+  transition:transform .15s ease, box-shadow .25s ease, opacity .2s ease;
+  cursor:pointer;
+  border:1px solid var(--border-soft);
+}
+.btn:active{transform:scale(.97);}
+.btn-chrome{
+  background:linear-gradient(180deg, rgba(231,236,242,0.14), rgba(231,236,242,0.04));
+  color:var(--text-1);
+}
+.btn-chrome:hover{box-shadow:0 0 0 1px var(--chrome-1) inset, 0 8px 30px -10px rgba(231,236,242,0.25);}
+
+.btn-violation{
+  background:linear-gradient(180deg,#ff2d4d,#9c0e26);
+  color:#fff;
+  box-shadow:0 0 40px rgba(255,45,77,0.5), inset 0 0 0 1px rgba(255,255,255,0.15);
+  animation:breathe-red 2.4s ease-in-out infinite;
+}
+.btn-violation:hover{box-shadow:0 0 70px rgba(255,45,77,0.85), inset 0 0 0 1px rgba(255,255,255,0.25);}
+@keyframes breathe-red{
+  0%,100%{box-shadow:0 0 30px rgba(255,45,77,0.4), inset 0 0 0 1px rgba(255,255,255,0.12);}
+  50%{box-shadow:0 0 55px rgba(255,45,77,0.75), inset 0 0 0 1px rgba(255,255,255,0.22);}
+}
+
+.btn-primary{
+  background:linear-gradient(180deg, var(--c-waiting), #2c63c9);
+  color:#fff;
+}
+.btn-success{background:linear-gradient(180deg, var(--c-allowed), #0a7a52); color:#04130c;}
+.btn-danger{background:linear-gradient(180deg, var(--c-denied), #8a0d22); color:#fff;}
+.btn-ghost{background:transparent; color:var(--text-2); border-color:var(--border-soft);}
+.btn-ghost:hover{color:var(--text-1); border-color:var(--chrome-1);}
+
+.btn[disabled]{opacity:.45; cursor:not-allowed; animation:none !important;}
+
+/* ----------------------------- إدخال ----------------------------- */
+.field{
+  background:rgba(255,255,255,0.04);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);
+  color:var(--text-1);
+  padding:14px 16px;
+  width:100%;
+  font-family:'Tajawal',sans-serif;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.field:focus{outline:none; border-color:var(--c-waiting); box-shadow:0 0 0 3px rgba(91,157,255,0.18);}
+.field::placeholder{color:var(--text-3);}
+label.flabel{color:var(--text-2); font-size:13px; font-weight:700; margin-bottom:6px; display:block;}
+
+/* ----------------------------- توقيع المطوّر ----------------------------- */
+.dev-signature{
+  position:fixed; bottom:14px; left:18px;
+  font-size:12px; color:var(--text-3);
+  letter-spacing:.5px; z-index:40; opacity:.7;
+}
+.wave-text span{
+  display:inline-block;
+  animation:wave-letter 2.4s ease-in-out infinite;
+}
+@keyframes wave-letter{
+  0%,60%,100%{transform:translateY(0);}
+  30%{transform:translateY(-6px);}
+}
+
+/* ----------------------------- إنذار المخالفات (لوحة الأدمن) ----------------------------- */
+.alarm-flash{
+  animation:alarm-bg .5s steps(2,jump-none) infinite;
+}
+@keyframes alarm-bg{
+  0%,100%{background-color:rgba(255,45,77,0.0);}
+  50%{background-color:rgba(255,45,77,0.35);}
+}
+.alarm-border{
+  animation:alarm-border .5s steps(2,jump-none) infinite;
+}
+@keyframes alarm-border{
+  0%,100%{box-shadow:inset 0 0 0 6px rgba(255,45,77,0.9);}
+  50%{box-shadow:inset 0 0 0 6px rgba(255,45,77,0.1);}
+}
+
+/* ----------------------------- Badges ----------------------------- */
+.badge{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:700;}
+.badge-pending{background:rgba(255,162,40,0.16); color:var(--c-limited); border:1px solid rgba(255,162,40,0.4);}
+.badge-approved{background:rgba(25,255,161,0.14); color:var(--c-allowed); border:1px solid rgba(25,255,161,0.4);}
+.badge-rejected{background:rgba(255,45,77,0.14); color:var(--c-denied); border:1px solid rgba(255,45,77,0.4);}
+
+/* جدول */
+table{width:100%; border-collapse:collapse;}
+th{color:var(--text-2); font-size:13px; text-align:right; padding:10px 14px; border-bottom:1px solid var(--border-soft); font-weight:700;}
+td{padding:12px 14px; border-bottom:1px solid rgba(148,163,184,0.08); font-size:14px;}
+tr:hover td{background:rgba(255,255,255,0.02);}
+
+/* تحميل */
+.spinner{
+  width:18px; height:18px; border-radius:50%;
+  border:3px solid rgba(255,255,255,0.2);
+  border-top-color:var(--text-1);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* تنبيه Toast */
+.toast{
+  position:fixed; bottom:30px; right:30px; z-index:60;
+  padding:14px 20px; border-radius:var(--radius-sm);
+  font-weight:700; font-size:14px;
+  box-shadow:0 12px 40px -8px rgba(0,0,0,0.6);
+  animation:toast-in .25s ease;
+}
+@keyframes toast-in{from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:translateY(0);}}

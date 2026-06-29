@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>غرفة التحكم | بوابة الطوارئ - مستشفى البشير</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-client.js"></script>
+
+<script>
+  /* ============== حماية الجلسة على مستوى الصفحة (أعلى الملف) ==============
+     ملاحظة أمنية: هذا تحقق على مستوى المتصفح فقط (sessionStorage)، وليس
+     بديلاً عن صلاحيات حقيقية بقاعدة البيانات. أي بيانات حساسة محمية فعلياً
+     عبر RLS + دوال RPC الآمنة في schema.sql، وليس عبر هذا الفحص. */
+  const __session = requireAdminSession();
+</script>
+</head>
+<body class="min-h-screen px-4 py-6 md:px-8" id="bodyRoot">
+
+  <!-- بانر إنذار المخالفات (يظهر فقط عند وجود بلاغ غير محلول) -->
+  <div id="alarmBanner" class="hidden fixed top-0 inset-x-0 z-50 alarm-flash">
+    <div class="max-w-6xl mx-auto mt-4 mx-4 glass rounded-[24px] p-5 flex items-center justify-between gap-4" style="border:2px solid var(--c-denied);">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🚨</span>
+        <div>
+          <p class="font-black text-base" style="color:var(--c-denied);">تم رصد مخالفة على البوابة!</p>
+          <p class="text-xs text-[var(--text-2)] mono ltr-num" id="alarmCount">0 بلاغ غير محلول</p>
+        </div>
+      </div>
+      <button id="resolveAlarmBtn" class="btn btn-danger px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap">
+        إيقاف الإنذار ومعالجة الحالة
+      </button>
+    </div>
+  </div>
+
+  <!-- الشريط العلوي -->
+  <header class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl chrome-edge glass">🛡️</div>
+      <div>
+        <h1 class="font-black text-lg leading-tight">غرفة التحكم</h1>
+        <p class="text-xs text-[var(--text-2)]">بوابة الطوارئ — مستشفى البشير</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button id="enableSoundBtn" class="btn btn-ghost px-4 py-2.5 rounded-xl text-sm">🔔 تفعيل صوت الإنذار</button>
+      <div class="text-left">
+        <p class="text-xs text-[var(--text-2)]">مرحباً</p>
+        <p class="font-bold text-sm mono ltr-num" id="adminNameTag">--</p>
+      </div>
+      <button id="logoutBtn" class="btn btn-ghost px-4 py-2.5 rounded-xl text-sm">خروج</button>
+    </div>
+  </header>
+
+  <!-- بطاقات سريعة (KPIs) -->
+  <section class="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="glass chrome-edge rounded-2xl p-5">
+      <p class="text-xs text-[var(--text-2)] mb-1">طلبات معلقة</p>
+      <p class="text-3xl font-black mono ltr-num" id="kpiPending">0</p>
+    </div>
+    <div class="glass chrome-edge rounded-2xl p-5">
+      <p class="text-xs text-[var(--text-2)] mb-1">مخالفات غير محلولة</p>
+      <p class="text-3xl font-black mono ltr-num" id="kpiViolations" style="color:var(--c-denied);">0</p>
+    </div>
+    <div class="glass chrome-edge rounded-2xl p-5">
+      <p class="text-xs text-[var(--text-2)] mb-1">حالة البوابة الآن</p>
+      <p class="text-xl font-black" id="kpiGateStatus">جاهزة</p>
+    </div>
+    <div class="glass chrome-edge rounded-2xl p-5">
+      <p class="text-xs text-[var(--text-2)] mb-1">عمليات اليوم</p>
+      <p class="text-3xl font-black mono ltr-num" id="kpiTodayLogs">0</p>
+    </div>
+  </section>
+
+  <!-- الطلبات المعلقة + السجل -->
+  <section class="max-w-6xl mx-auto grid lg:grid-cols-3 gap-6 mb-8">
+
+    <div class="lg:col-span-2 glass chrome-edge rounded-[28px] p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-black text-base">📋 طلبات التسجيل المعلقة</h2>
+        <button id="refreshPendingBtn" class="btn btn-ghost px-3 py-1.5 rounded-lg text-xs">تحديث</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table id="pendingTable">
+          <thead>
+            <tr>
+              <th>الاسم</th>
+              <th>الرقم الوظيفي</th>
+              <th>القسم</th>
+              <th>الهاتف</th>
+              <th>التاريخ</th>
+              <th>الإجراء</th>
+            </tr>
+          </thead>
+          <tbody id="pendingTbody"></tbody>
+        </table>
+        <p id="pendingEmpty" class="hidden text-center text-[var(--text-3)] py-8 text-sm">لا توجد طلبات معلّقة حالياً 🎉</p>
+      </div>
+    </div>
+
+    <div class="glass chrome-edge rounded-[28px] p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-black text-base">🕒 آخر عمليات البوابة</h2>
+        <button id="refreshLogsBtn" class="btn btn-ghost px-3 py-1.5 rounded-lg text-xs">تحديث</button>
+      </div>
+      <div id="logsList" class="flex flex-col gap-2 max-h-[420px] overflow-y-auto"></div>
+    </div>
+
+  </section>
+
+  <!-- إدارة المشرفين -->
+  <section class="max-w-6xl mx-auto glass chrome-edge rounded-[28px] p-6 mb-12">
+    <h2 class="font-black text-base mb-1">👮 ترقية موظف ليصبح مشرفاً (أدمن)</h2>
+    <p class="text-xs text-[var(--text-2)] mb-4">
+      لأسباب أمنية، جدول المشرفين محمي بالكامل ولا يمكن عرض قائمته من هنا — راجعها مباشرة من Supabase Dashboard.
+      هذا النموذج يضيف صلاحية أدمن لموظف معتمد مسبقاً فقط.
+    </p>
+    <form id="promoteForm" class="grid md:grid-cols-4 gap-3">
+      <div class="md:col-span-2">
+        <label class="flabel">اختر موظفاً معتمداً</label>
+        <select id="promoteEmployeeSelect" class="field" required>
+          <option value="">-- اختر --</option>
+        </select>
+      </div>
+      <div>
+        <label class="flabel">رقم الهاتف</label>
+        <input id="promotePhone" type="tel" inputmode="numeric" class="field mono ltr-num" placeholder="07XXXXXXXX" required>
+      </div>
+      <div>
+        <label class="flabel">الصلاحية</label>
+        <select id="promoteRole" class="field">
+          <option value="ADMIN">أدمن</option>
+          <option value="SUPER_ADMIN">أدمن رئيسي</option>
+        </select>
+      </div>
+      <div class="md:col-span-4">
+        <button type="submit" id="promoteBtn" class="btn btn-primary py-3.5 px-6 rounded-xl text-sm font-bold w-full md:w-auto">
+          ترقية إلى مشرف
+        </button>
+      </div>
+    </form>
+  </section>
+
+<!-- ===================== نافذة تأكيد القبول (اختيار نوع التصريح) ===================== -->
+<div id="approveModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+  <div class="glass chrome-edge rounded-[28px] p-7 w-full max-w-sm">
+    <h3 class="font-black text-base mb-1">قبول الطلب</h3>
+    <p class="text-xs text-[var(--text-2)] mb-4" id="approveModalName"></p>
+    <label class="flabel">نوع التصريح</label>
+    <select id="approveAccessLevel" class="field mb-5">
+      <option value="FULL_ACCESS">تصريح كامل (دخول دائم بدون قيود)</option>
+      <option value="LIMITED_ACCESS">تصريح محدود (بالقسم/الوردية)</option>
+    </select>
+    <div class="flex gap-3">
+      <button id="confirmApproveBtn" class="btn btn-success py-3 rounded-xl text-sm font-bold flex-1">تأكيد القبول</button>
+      <button id="cancelApproveBtn" class="btn btn-ghost py-3 rounded-xl text-sm flex-1">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== جلسة الأدمن ===================== */
+document.getElementById('adminNameTag').textContent = __session ? __session.employeeId : '--';
+
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  clearAdminSession();
+  window.location.replace('login.html');
+});
+
+/* ===================== صوت الإنذار (Web Audio API) ===================== */
+let audioCtx = null;
+let sirenInterval = null;
+let sirenOscillator = null;
+let sirenGain = null;
+
+function unlockAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  showToast('تم تفعيل صوت الإنذار 🔔','success');
+}
+
+function startSiren(){
+  if(!audioCtx || sirenInterval) return;
+  sirenGain = audioCtx.createGain();
+  sirenGain.gain.value = 0.18;
+  sirenGain.connect(audioCtx.destination);
+
+  sirenOscillator = audioCtx.createOscillator();
+  sirenOscillator.type = 'sawtooth';
+  sirenOscillator.connect(sirenGain);
+  sirenOscillator.start();
+
+  let high = true;
+  sirenOscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+  sirenInterval = setInterval(()=>{
+    high = !high;
+    sirenOscillator.frequency.linearRampToValueAtTime(high?880:550, audioCtx.currentTime + 0.4);
+  }, 450);
+}
+
+function stopSiren(){
+  if(sirenInterval){ clearInterval(sirenInterval); sirenInterval = null; }
+  if(sirenOscillator){ try{ sirenOscillator.stop(); }catch(e){} sirenOscillator = null; }
+  if(sirenGain){ sirenGain.disconnect(); sirenGain = null; }
+}
+
+document.getElementById('enableSoundBtn').addEventListener('click', unlockAudio);
+
+/* ===================== إنذار المخالفات ===================== */
+let unresolvedViolationIds = [];
+
+function renderAlarmState(){
+  const banner = document.getElementById('alarmBanner');
+  const body = document.getElementById('bodyRoot');
+  document.getElementById('kpiViolations').textContent = unresolvedViolationIds.length;
+
+  if(unresolvedViolationIds.length > 0){
+    banner.classList.remove('hidden');
+    body.classList.add('alarm-border');
+    document.getElementById('alarmCount').textContent = `${unresolvedViolationIds.length} بلاغ غير محلول`;
+    startSiren();
+  }else{
+    banner.classList.add('hidden');
+    body.classList.remove('alarm-border');
+    stopSiren();
+  }
+}
+
+async function loadUnresolvedViolations(){
+  const { data, error } = await sb.from('violations').select('id').eq('resolved', false);
+  if(error){ console.error(error); return; }
+  unresolvedViolationIds = (data||[]).map(v=>v.id);
+  renderAlarmState();
+}
+
+document.getElementById('resolveAlarmBtn').addEventListener('click', async ()=>{
+  if(unresolvedViolationIds.length === 0) return;
+  const { error } = await sb.from('violations').update({ resolved:true }).in('id', unresolvedViolationIds);
+  if(error){ showToast('تعذّر تحديث البلاغ','error'); return; }
+  unresolvedViolationIds = [];
+  renderAlarmState();
+  showToast('تم إغلاق البلاغ ✅','success');
+});
+
+function subscribeViolations(){
+  sb.channel('admin-violations')
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'violations' }, (payload)=>{
+      unresolvedViolationIds.push(payload.new.id);
+      renderAlarmState();
+    })
+    .subscribe();
+}
+
+/* ===================== حالة البوابة (KPI مباشر) ===================== */
+const GATE_LABELS = { WAITING:'جاهزة', ALLOWED:'مفتوحة - مسموح', LIMITED:'مفتوحة - محدود', DENIED:'مغلقة - مرفوض' };
+const GATE_COLORS = { WAITING:'var(--c-waiting)', ALLOWED:'var(--c-allowed)', LIMITED:'var(--c-limited)', DENIED:'var(--c-denied)' };
+
+function renderGateKpi(status){
+  const el = document.getElementById('kpiGateStatus');
+  el.textContent = GATE_LABELS[status] || '--';
+  el.style.color = GATE_COLORS[status] || 'var(--text-1)';
+}
+
+async function loadGateStatus(){
+  const { data } = await sb.from('system_status').select('current_scan_status').eq('id',1).maybeSingle();
+  renderGateKpi(data ? data.current_scan_status : 'WAITING');
+}
+
+function subscribeGateStatus(){
+  sb.channel('admin-gate-status')
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'system_status', filter:'id=eq.1' }, (payload)=>{
+      renderGateKpi(payload.new.current_scan_status);
+    })
+    .subscribe();
+}
+
+/* ===================== الطلبات المعلقة ===================== */
+let pendingCache = [];
+
+async function loadPendingRequests(){
+  const { data, error } = await sb.from('pending_registrations')
+    .select('*').eq('status','PENDING').order('created_at', { ascending:false });
+  if(error){ console.error(error); return; }
+  pendingCache = data || [];
+  renderPendingTable();
+  document.getElementById('kpiPending').textContent = pendingCache.length;
+}
+
+function renderPendingTable(){
+  const tbody = document.getElementById('pendingTbody');
+  tbody.innerHTML = '';
+  document.getElementById('pendingEmpty').classList.toggle('hidden', pendingCache.length > 0);
+
+  pendingCache.forEach(row=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="font-bold">${row.full_name}</td>
+      <td class="mono ltr-num">${row.employee_id}</td>
+      <td>${row.department || '-'}</td>
+      <td class="mono ltr-num">${row.phone}</td>
+      <td class="text-xs text-[var(--text-2)] mono ltr-num">${formatArabicTime(row.created_at)}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-success px-3 py-1.5 rounded-lg text-xs approve-btn">قبول</button>
+          <button class="btn btn-danger px-3 py-1.5 rounded-lg text-xs reject-btn">رفض</button>
+        </div>
+      </td>
+    `;
+    tr.querySelector('.approve-btn').addEventListener('click', ()=> openApproveModal(row));
+    tr.querySelector('.reject-btn').addEventListener('click', ()=> rejectRegistration(row));
+    tbody.appendChild(tr);
+  });
+}
+
+let modalTargetRow = null;
+
+function openApproveModal(row){
+  modalTargetRow = row;
+  document.getElementById('approveModalName').textContent = `${row.full_name} — ${row.employee_id}`;
+  document.getElementById('approveModal').classList.remove('hidden');
+}
+document.getElementById('cancelApproveBtn').addEventListener('click', ()=>{
+  document.getElementById('approveModal').classList.add('hidden');
+  modalTargetRow = null;
+});
+document.getElementById('confirmApproveBtn').addEventListener('click', async ()=>{
+  if(!modalTargetRow) return;
+  const accessLevel = document.getElementById('approveAccessLevel').value;
+  const { error } = await sb.from('pending_registrations').update({
+    status:'APPROVED', access_level:accessLevel, reviewed_at:new Date().toISOString(),
+  }).eq('id', modalTargetRow.id);
+
+  document.getElementById('approveModal').classList.add('hidden');
+  if(error){ showToast('تعذّر قبول الطلب','error'); return; }
+  showToast(`تم قبول ${modalTargetRow.full_name} ✅`,'success');
+  modalTargetRow = null;
+  loadPendingRequests();
+  populateApprovedEmployeesSelect();
+});
+
+async function rejectRegistration(row){
+  if(!confirm(`تأكيد رفض طلب ${row.full_name}؟`)) return;
+  const { error } = await sb.from('pending_registrations').update({
+    status:'REJECTED', reviewed_at:new Date().toISOString(),
+  }).eq('id', row.id);
+  if(error){ showToast('تعذّر رفض الطلب','error'); return; }
+  showToast(`تم رفض طلب ${row.full_name}`,'warning');
+  loadPendingRequests();
+}
+
+document.getElementById('refreshPendingBtn').addEventListener('click', loadPendingRequests);
+
+/* ===================== سجل عمليات البوابة ===================== */
+async function loadRecentLogs(){
+  const { data, error } = await sb.from('gate_access_logs')
+    .select('*').order('created_at', { ascending:false }).limit(25);
+  if(error){ console.error(error); return; }
+  renderLogsList(data || []);
+
+  const todayStr = new Date().toDateString();
+  const todayCount = (data||[]).filter(l => new Date(l.created_at).toDateString() === todayStr).length;
+  document.getElementById('kpiTodayLogs').textContent = todayCount;
+}
+
+const RESULT_BADGE = {
+  ALLOWED:'badge-approved', LIMITED:'badge-pending', DENIED:'badge-rejected',
+};
+const RESULT_LABEL_AR = { ALLOWED:'مسموح', LIMITED:'محدود', DENIED:'مرفوض' };
+
+function renderLogsList(logs){
+  const wrap = document.getElementById('logsList');
+  wrap.innerHTML = '';
+  if(logs.length === 0){
+    wrap.innerHTML = `<p class="text-center text-[var(--text-3)] text-sm py-6">لا توجد عمليات بعد</p>`;
+    return;
+  }
+  logs.forEach(log=>{
+    const item = document.createElement('div');
+    item.className = 'flex items-center justify-between p-3 rounded-xl';
+    item.style.background = 'rgba(255,255,255,0.03)';
+    item.innerHTML = `
+      <div>
+        <p class="font-bold text-sm mono ltr-num">${log.employee_id}</p>
+        <p class="text-xs text-[var(--text-3)] mono ltr-num">${formatArabicTime(log.created_at)}</p>
+      </div>
+      <span class="badge ${RESULT_BADGE[log.action_result]||''}">${RESULT_LABEL_AR[log.action_result]||log.action_result}</span>
+    `;
+    wrap.appendChild(item);
+  });
+}
+
+document.getElementById('refreshLogsBtn').addEventListener('click', loadRecentLogs);
+
+/* ===================== ترقية مشرف جديد ===================== */
+async function populateApprovedEmployeesSelect(){
+  const { data, error } = await sb.from('pending_registrations')
+    .select('employee_id, full_name').eq('status','APPROVED').order('full_name');
+  const select = document.getElementById('promoteEmployeeSelect');
+  select.innerHTML = '<option value="">-- اختر --</option>';
+  if(error){ console.error(error); return; }
+  (data||[]).forEach(emp=>{
+    const opt = document.createElement('option');
+    opt.value = emp.employee_id;
+    opt.textContent = `${emp.full_name} (${emp.employee_id})`;
+    select.appendChild(opt);
+  });
+}
+
+document.getElementById('promoteForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn = document.getElementById('promoteBtn');
+  const employeeId = document.getElementById('promoteEmployeeSelect').value;
+  const phone = document.getElementById('promotePhone').value.trim();
+  const role = document.getElementById('promoteRole').value;
+  if(!employeeId){ showToast('اختر موظفاً أولاً','warning'); return; }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري الترقية...`;
+
+  try{
+    const { error } = await sb.rpc('promote_to_admin', {
+      p_employee_id: employeeId, p_phone: phone, p_role: role,
+    });
+    if(error) throw error;
+    showToast('تمت ترقية الموظف لمشرف ✅','success');
+    document.getElementById('promoteForm').reset();
+  }catch(err){
+    console.error(err);
+    showToast(err.message || 'تعذّرت الترقية، تأكد من البيانات','error');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+
+/* ===================== تشغيل ===================== */
+loadPendingRequests();
+loadRecentLogs();
+loadGateStatus();
+loadUnresolvedViolations();
+populateApprovedEmployeesSelect();
+subscribeViolations();
+subscribeGateStatus();
+
+// تحديث دوري احتياطي كل 30 ثانية (إضافة للـ Realtime لضمان دقة البيانات)
+setInterval(()=>{
+  loadPendingRequests();
+  loadRecentLogs();
+}, 30000);
+</script>
+</body>
+</html>
