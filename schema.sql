@@ -1,7 +1,6 @@
 -- ============================================================================
 -- نظام أمن بوابة الطوارئ - مستشفى البشير
--- سكربت إعداد قاعدة البيانات الكامل
--- نفّذه كامل دفعة واحدة في: Supabase Dashboard > SQL Editor > New query
+-- سكربت إعداد قاعدة البيانات الكامل (مُحدَّث مع العمودين المطلوبين)
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -12,15 +11,16 @@ create table if not exists system_status (
   gate_open boolean not null default false,
   current_scan_status text not null default 'WAITING'
     check (current_scan_status in ('WAITING','ALLOWED','LIMITED','DENIED')),
+  last_scanned_employee text default '',   -- ✅ العمود الجديد
   updated_at timestamptz not null default now()
 );
 
-insert into system_status (id, gate_open, current_scan_status)
-values (1, false, 'WAITING')
+insert into system_status (id, gate_open, current_scan_status, last_scanned_employee)
+values (1, false, 'WAITING', '')
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
--- 2) سجل عمليات الدخول من البوابة (لرقابة الإدارة)
+-- 2) سجل عمليات الدخول من البوابة
 -- ----------------------------------------------------------------------------
 create table if not exists gate_access_logs (
   id bigint generated always as identity primary key,
@@ -30,8 +30,7 @@ create table if not exists gate_access_logs (
 );
 
 -- ----------------------------------------------------------------------------
--- 3) طلبات التسجيل (تسجيل ذاتي + مراجعة الأدمن)
---    access_level تتحدد من الأدمن لحظة القبول (تصريح كامل / محدود)
+-- 3) طلبات التسجيل (مع إضافة عمود role لإدارة رتب المشرفين)
 -- ----------------------------------------------------------------------------
 create table if not exists pending_registrations (
   id bigint generated always as identity primary key,
@@ -41,12 +40,13 @@ create table if not exists pending_registrations (
   department text,
   status text not null default 'PENDING' check (status in ('PENDING','APPROVED','REJECTED')),
   access_level text check (access_level in ('FULL_ACCESS','LIMITED_ACCESS')),
+  role text,   -- ✅ العمود الجديد (ADMIN, SUPER_ADMIN, SUB_ADMIN, أو NULL)
   created_at timestamptz not null default now(),
   reviewed_at timestamptz
 );
 
 -- ----------------------------------------------------------------------------
--- 4) بلاغات المخالفات (تصوير / عبور مخالف)
+-- 4) بلاغات المخالفات
 -- ----------------------------------------------------------------------------
 create table if not exists violations (
   id bigint generated always as identity primary key,
@@ -56,7 +56,6 @@ create table if not exists violations (
 
 -- ----------------------------------------------------------------------------
 -- 5) جدول المشرفين (تسجيل دخول بالرقم الوظيفي + الهاتف)
---    ⚠️ هذا الجدول لن يُفتح للقراءة العامة (anon) — راجع دالة verify_admin_login أدناه
 -- ----------------------------------------------------------------------------
 create table if not exists admins (
   id bigint generated always as identity primary key,
@@ -77,7 +76,7 @@ alter publication supabase_realtime add table violations;
 alter publication supabase_realtime add table pending_registrations;
 
 -- ============================================================================
--- تفعيل Row Level Security على كل الجداول
+-- تفعيل Row Level Security
 -- ============================================================================
 alter table system_status enable row level security;
 alter table gate_access_logs enable row level security;
@@ -86,37 +85,34 @@ alter table violations enable row level security;
 alter table admins enable row level security;
 
 -- ============================================================================
--- سياسات الوصول العامة (anon) — للشاشات بدون تسجيل دخول: الحارس + verify.html
+-- سياسات الوصول العامة (anon)
 -- ============================================================================
 
--- system_status: قراءة + تحديث لحظي (الحارس يشاهد، verify.html يغيّر الحالة)
+-- system_status: قراءة + تحديث
 create policy "anon_read_system_status" on system_status for select using (true);
 create policy "anon_update_system_status" on system_status for update using (true);
 
--- gate_access_logs: إدراج من verify.html + قراءة لعرضها بلوحة الأدمن
+-- gate_access_logs: إدراج + قراءة
 create policy "anon_insert_logs" on gate_access_logs for insert with check (true);
 create policy "anon_read_logs" on gate_access_logs for select using (true);
 
--- pending_registrations: تسجيل ذاتي + تحديث الحالة (قبول/رفض) من لوحة الأدمن
--- ملاحظة: السماح بالقراءة هنا ضروري لعمل verify.html والداشبورد، لكن هذا
--- يعني أن أي شخص يملك الـ anon key يقدر يقرأ كل سجلات الموظفين (اسم/هاتف/قسم).
--- لتقليل هذا الكشف بالواجهة العامة (verify.html) استخدم RPC الآمن أدناه
--- بدل القراءة المباشرة من الجدول كلما أمكن.
+-- pending_registrations: إدراج + قراءة + تحديث (يسمح بتعديل role)
 create policy "anon_insert_registration" on pending_registrations for insert with check (true);
 create policy "anon_read_registration" on pending_registrations for select using (true);
 create policy "anon_update_registration" on pending_registrations for update using (true);
 
--- violations: إدراج من شاشة الحارس + قراءة/تحديث (حل البلاغ) من لوحة الأدمن
+-- violations: إدراج + قراءة + تحديث
 create policy "anon_insert_violation" on violations for insert with check (true);
 create policy "anon_read_violations" on violations for select using (true);
 create policy "anon_update_violations" on violations for update using (true);
 
--- admins: لا توجد أي سياسة SELECT/UPDATE/INSERT لـ anon — الجدول مقفول بالكامل.
--- الوصول الوحيد المسموح هو عبر الدالة الآمنة verify_admin_login بالأسفل.
+-- admins: لا توجد سياسات لـ anon (مقفول بالكامل)
 
 -- ============================================================================
--- 🔒 دالة آمنة لتسجيل دخول الأدمن (تتفادى كشف جدول admins بالكامل لأي زائر)
+-- دوال RPC الآمنة
 -- ============================================================================
+
+-- 1) تسجيل دخول الأدمن
 create or replace function verify_admin_login(p_employee_id text, p_phone text)
 returns table(employee_id text, role text)
 language sql
@@ -132,10 +128,7 @@ $$;
 revoke all on function verify_admin_login(text, text) from public;
 grant execute on function verify_admin_login(text, text) to anon;
 
--- ============================================================================
--- 🔒 دالة آمنة لفحص حالة تسجيل موظف من verify.html بدون كشف كل الجدول
--- (ترجع فقط الحالة + نوع التصريح + الاسم، وليس الهاتف الكامل لكل الموظفين)
--- ============================================================================
+-- 2) فحص حالة تسجيل موظف (لـ verify.html)
 create or replace function check_registration_status(p_employee_id text)
 returns table(status text, access_level text, full_name text)
 language sql
@@ -150,17 +143,37 @@ $$;
 revoke all on function check_registration_status(text) from public;
 grant execute on function check_registration_status(text) to anon;
 
--- ============================================================================
--- 🔒 دالة آمنة لترقية موظف معتمد ليصبح أدمن (تُستخدم من لوحة تحكم الأدمن)
--- ============================================================================
+-- 3) عدّ المشرفين الحاليين (لسقف 5)
+create or replace function count_admins()
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  select count(*)::integer from admins;
+$$;
+
+revoke all on function count_admins() from public;
+grant execute on function count_admins() to anon;
+
+-- 4) ترقية موظف معتمد إلى أدمن (مع سقف 5)
 create or replace function promote_to_admin(p_employee_id text, p_phone text, p_role text default 'ADMIN')
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  current_admin_count integer;
 begin
-  -- يجب أن يكون الموظف معتمداً (APPROVED) أصلاً قبل ترقيته
+  select count(*) into current_admin_count from admins;
+
+  if current_admin_count >= 5 and not exists (
+    select 1 from admins where employee_id = p_employee_id
+  ) then
+    raise exception 'تم الوصول للحد الأقصى المسموح به (5 مشرفين)';
+  end if;
+
   if not exists (
     select 1 from pending_registrations
     where employee_id = p_employee_id and status = 'APPROVED'
@@ -178,11 +191,6 @@ revoke all on function promote_to_admin(text, text, text) from public;
 grant execute on function promote_to_admin(text, text, text) to anon;
 
 -- ============================================================================
--- ملاحظة أخيرة مهمة (اقرأها قبل النشر الفعلي):
--- هذا الإعداد يعتمد على anon key واحد للجميع (الحارس + الموظفين + الأدمن)
--- بدون Supabase Auth حقيقي، فلا يوجد فرق فعلي على مستوى القاعدة بين "متصفح
--- أدمن مسجّل دخول" و "أي زائر آخر" غير الدوال الآمنة أعلاه. هذا مقبول لمرحلة
--- التشغيل التجريبي، لكن للاستخدام الفعلي الكامل بمستشفى حقيقي يُفضّل لاحقاً
--- الانتقال لـ Supabase Auth (OTP على رقم الهاتف) + ربط RLS بـ auth.uid()
--- لحماية حقيقية على مستوى الصلاحيات، خصوصاً لشاشة admin_dashboard.html.
+-- تنبيه أمني: هذا الإعداد يعتمد على anon key واحد للجميع بدون مصادقة حقيقية.
+-- مناسب للتشغيل التجريبي، لكن للإنتاج يُفضّل استخدام Supabase Auth مع RLS.
 -- ============================================================================
