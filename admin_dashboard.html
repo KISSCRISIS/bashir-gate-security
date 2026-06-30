@@ -18,7 +18,7 @@
   const __session = requireAdminSession();
 </script>
 </head>
-<body class="min-h-screen px-4 py-6 md:px-8" id="bodyRoot">
+<body class="min-h-screen px-4 py-6 md:px-8 pb-24" id="bodyRoot">
 
   <!-- بانر إنذار المخالفات (يظهر فقط عند وجود بلاغ غير محلول) -->
   <div id="alarmBanner" class="hidden fixed top-0 inset-x-0 z-50 alarm-flash">
@@ -51,28 +51,60 @@
       <div class="text-left">
         <p class="text-xs text-[var(--text-2)]">مرحباً</p>
         <p class="font-bold text-sm mono ltr-num" id="adminNameTag">--</p>
+        <p class="text-[10px] font-bold" id="adminRoleTag" style="color:var(--c-chrome);"></p>
       </div>
       <button id="logoutBtn" class="btn btn-ghost px-4 py-2.5 rounded-xl text-sm">خروج</button>
     </div>
   </header>
 
   <!-- بطاقات سريعة (KPIs) -->
-  <section class="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <section class="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="glass chrome-edge rounded-2xl p-5">
       <p class="text-xs text-[var(--text-2)] mb-1">طلبات معلقة</p>
       <p class="text-3xl font-black mono ltr-num" id="kpiPending">0</p>
     </div>
     <div class="glass chrome-edge rounded-2xl p-5">
-      <p class="text-xs text-[var(--text-2)] mb-1">مخالفات غير محلولة</p>
-      <p class="text-3xl font-black mono ltr-num" id="kpiViolations" style="color:var(--c-denied);">0</p>
+      <p class="text-xs text-[var(--text-2)] mb-1">موظفين معتمدين</p>
+      <p class="text-3xl font-black mono ltr-num" id="kpiApproved" style="color:var(--c-allowed);">0</p>
+    </div>
+    <div class="glass chrome-edge rounded-2xl p-5">
+      <p class="text-xs text-[var(--text-2)] mb-1">موظفين مرفوضين</p>
+      <p class="text-3xl font-black mono ltr-num" id="kpiRejected" style="color:var(--c-denied);">0</p>
     </div>
     <div class="glass chrome-edge rounded-2xl p-5">
       <p class="text-xs text-[var(--text-2)] mb-1">حالة البوابة الآن</p>
       <p class="text-xl font-black" id="kpiGateStatus">جاهزة</p>
     </div>
-    <div class="glass chrome-edge rounded-2xl p-5">
-      <p class="text-xs text-[var(--text-2)] mb-1">عمليات اليوم</p>
-      <p class="text-3xl font-black mono ltr-num" id="kpiTodayLogs">0</p>
+  </section>
+
+  <!-- ===================== لوحة التحليلات (3 أطر زمنية) ===================== -->
+  <section class="max-w-6xl mx-auto grid md:grid-cols-3 gap-4 mb-8">
+
+    <!-- 1) الإجمالي الشهري التراكمي (آخر 30 يوماً) -->
+    <div class="analytics-card glass chrome-edge">
+      <p class="text-xs text-[var(--text-2)] mb-2">📅 الإجمالي الشهري التراكمي</p>
+      <p class="metric glow-blue mono ltr-num" id="analyticsMonthly">0</p>
+      <p class="text-[11px] text-[var(--text-3)] mt-2">إجمالي عمليات الدخول خلال آخر 30 يوماً</p>
+    </div>
+
+    <!-- 2) إجمالي اليوم (آخر 24 ساعة) -->
+    <div class="analytics-card glass chrome-edge">
+      <p class="text-xs text-[var(--text-2)] mb-2">🕛 إجمالي اليوم</p>
+      <p class="metric glow-green mono ltr-num" id="analyticsDaily">0</p>
+      <p class="text-[11px] text-[var(--text-3)] mt-2">إجمالي الحركة خلال آخر 24 ساعة</p>
+    </div>
+
+    <!-- 3) العدّاد الحي (آخر 10 دقائق) -->
+    <div class="analytics-card glass chrome-edge">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-[var(--text-2)]">⚡ العدّاد الحي (آخر 10 دقائق)</p>
+        <span class="dot" style="background:var(--c-allowed);box-shadow:0 0 10px var(--c-allowed);"></span>
+      </div>
+      <div class="flex flex-col gap-2">
+        <div class="slot"><span class="text-sm font-bold">🟢 مسموح</span><span class="slot-val glow-green mono ltr-num" id="liveAllowed">0</span></div>
+        <div class="slot"><span class="text-sm font-bold">🟡 محدود</span><span class="slot-val glow-orange mono ltr-num" id="liveLimited">0</span></div>
+        <div class="slot"><span class="text-sm font-bold">🔴 مرفوض</span><span class="slot-val glow-red mono ltr-num" id="liveDenied">0</span></div>
+      </div>
     </div>
   </section>
 
@@ -81,7 +113,7 @@
 
     <div class="lg:col-span-2 glass chrome-edge rounded-[28px] p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="font-black text-base">📋 طلبات التسجيل المعلقة</h2>
+        <h2 class="font-black text-base">📋 طلبات التسجيل المعلقة <span class="text-xs font-normal text-[var(--text-3)]">(مباشر)</span></h2>
         <button id="refreshPendingBtn" class="btn btn-ghost px-3 py-1.5 rounded-lg text-xs">تحديث</button>
       </div>
       <div class="overflow-x-auto">
@@ -112,9 +144,12 @@
 
   </section>
 
-  <!-- إدارة المشرفين -->
-  <section class="max-w-6xl mx-auto glass chrome-edge rounded-[28px] p-6 mb-12">
-    <h2 class="font-black text-base mb-1">👮 ترقية موظف ليصبح مشرفاً (أدمن)</h2>
+  <!-- ===================== ترقية موظف (RPC) — للمشرف الأعلى فقط ===================== -->
+  <section id="promoteSection" class="hidden max-w-6xl mx-auto glass chrome-edge rounded-[28px] p-6 mb-6">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <h2 class="font-black text-base">👮 ترقية موظف ليصبح مشرفاً (أدمن)</h2>
+      <span class="badge badge-pending mono ltr-num">المقاعد: <span id="adminSeatCount">-</span>/5</span>
+    </div>
     <p class="text-xs text-[var(--text-2)] mb-4">
       لأسباب أمنية، جدول المشرفين محمي بالكامل ولا يمكن عرض قائمته من هنا — راجعها مباشرة من Supabase Dashboard.
       هذا النموذج يضيف صلاحية أدمن لموظف معتمد مسبقاً فقط.
@@ -145,6 +180,42 @@
     </form>
   </section>
 
+  <!-- ===================== إدارة رتب المشرفين (المشرف الأعلى حصراً) ===================== -->
+  <section id="roleMgmtSection" class="hidden super-zone max-w-6xl mx-auto glass rounded-[28px] p-6 mb-12">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <h2 class="font-black text-base">⚙️ إدارة رتب المشرفين</h2>
+      <span class="badge badge-approved">SUPER ADMIN فقط</span>
+    </div>
+    <p class="text-xs text-[var(--text-2)] mb-4">
+      أدخل الرقم الوظيفي ورقم الهاتف لمنح أو سحب صلاحيات المشرف فوراً. يتم تحديث الرتبة في قاعدة البيانات مباشرةً
+      وتُعرض حالة العملية لحظياً عبر Supabase Realtime.
+    </p>
+    <form id="roleForm" class="grid md:grid-cols-4 gap-3">
+      <div>
+        <label class="flabel">الرقم الوظيفي</label>
+        <input id="roleEmployeeId" type="text" class="field mono ltr-num" placeholder="EMP001" required>
+      </div>
+      <div>
+        <label class="flabel">رقم الهاتف</label>
+        <input id="rolePhone" type="tel" inputmode="numeric" class="field mono ltr-num" placeholder="07XXXXXXXX" required>
+      </div>
+      <div>
+        <label class="flabel">الرتبة الجديدة</label>
+        <select id="roleSelect" class="field">
+          <option value="SUB_ADMIN">SUB_ADMIN (مشرف فرعي)</option>
+          <option value="SUPER_ADMIN">SUPER_ADMIN (مشرف رئيسي)</option>
+          <option value="__REVOKE__">إزالة الصلاحية (سحب)</option>
+        </select>
+      </div>
+      <div class="flex items-end">
+        <button type="submit" id="roleBtn" class="btn btn-primary py-3.5 px-6 rounded-xl text-sm font-bold w-full">
+          تنفيذ
+        </button>
+      </div>
+    </form>
+    <p id="roleStatusMsg" class="hidden mt-4 text-sm font-bold text-center"></p>
+  </section>
+
 <!-- ===================== نافذة تأكيد القبول (اختيار نوع التصريح) ===================== -->
 <div id="approveModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
   <div class="glass chrome-edge rounded-[28px] p-7 w-full max-w-sm">
@@ -162,9 +233,36 @@
   </div>
 </div>
 
+<!-- التوقيع المتحرك العائم -->
+<div class="kinetic-footer">
+  <span class="footer-label">System Developer:</span>
+  <div class="kinetic-text-wrapper" id="kineticSig"></div>
+</div>
+
 <script>
-/* ===================== جلسة الأدمن ===================== */
+/* ===================== جلسة الأدمن + صلاحية المشرف الأعلى ===================== */
 document.getElementById('adminNameTag').textContent = __session ? __session.employeeId : '--';
+const IS_SUPER_ADMIN = !!(__session && __session.role === 'SUPER_ADMIN');
+document.getElementById('adminRoleTag').textContent = __session ? (__session.role || '') : '';
+
+/* إظهار أقسام الإدارة للمشرف الأعلى فقط (مخفية تماماً عن المشرفين الفرعيين) */
+if(IS_SUPER_ADMIN){
+  document.getElementById('promoteSection').classList.remove('hidden');
+  document.getElementById('roleMgmtSection').classList.remove('hidden');
+}
+
+/* توقيع متحرك (Kinetic Wave) */
+(function renderKineticSignature(){
+  const text = 'Dr. Alaa Aqrabawi';
+  const wrap = document.getElementById('kineticSig');
+  text.split('').forEach((ch,i)=>{
+    const span = document.createElement('span');
+    span.className = 'kinetic-letter';
+    span.textContent = ch === ' ' ? '\u00A0' : ch;
+    span.style.setProperty('--delay', (i*0.08)+'s');
+    wrap.appendChild(span);
+  });
+})();
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
   clearAdminSession();
@@ -218,7 +316,6 @@ let unresolvedViolationIds = [];
 function renderAlarmState(){
   const banner = document.getElementById('alarmBanner');
   const body = document.getElementById('bodyRoot');
-  document.getElementById('kpiViolations').textContent = unresolvedViolationIds.length;
 
   if(unresolvedViolationIds.length > 0){
     banner.classList.remove('hidden');
@@ -276,8 +373,50 @@ function subscribeGateStatus(){
   sb.channel('admin-gate-status')
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'system_status', filter:'id=eq.1' }, (payload)=>{
       renderGateKpi(payload.new.current_scan_status);
+      computeLiveSlots();   // إنعاش العدّاد الحي فور أي حركة على البوابة
     })
     .subscribe();
+}
+
+/* ===================== لوحة التحليلات (gate_access_logs) ===================== */
+function isoAgo({minutes=0, hours=0, days=0}){
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - minutes);
+  d.setHours(d.getHours() - hours);
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+/* 1) الإجمالي الشهري + 2) إجمالي اليوم (عدّ سحابي دقيق) */
+async function loadTimeframeTotals(){
+  const monthAgo = isoAgo({days:30});
+  const dayAgo   = isoAgo({hours:24});
+
+  const [{ count: monthly }, { count: daily }] = await Promise.all([
+    sb.from('gate_access_logs').select('id', { count:'exact', head:true }).gte('created_at', monthAgo),
+    sb.from('gate_access_logs').select('id', { count:'exact', head:true }).gte('created_at', dayAgo),
+  ]);
+
+  document.getElementById('analyticsMonthly').textContent = monthly ?? 0;
+  document.getElementById('analyticsDaily').textContent = daily ?? 0;
+}
+
+/* 3) العدّاد الحي للسلوتات الثلاثة خلال آخر 10 دقائق */
+async function computeLiveSlots(){
+  const tenMinAgo = isoAgo({minutes:10});
+  const { data, error } = await sb.from('gate_access_logs')
+    .select('action_result, created_at').gte('created_at', tenMinAgo);
+  if(error){ console.error(error); return; }
+
+  let allowed=0, limited=0, denied=0;
+  (data||[]).forEach(l=>{
+    if(l.action_result==='ALLOWED') allowed++;
+    else if(l.action_result==='LIMITED') limited++;
+    else if(l.action_result==='DENIED') denied++;
+  });
+  document.getElementById('liveAllowed').textContent = allowed;
+  document.getElementById('liveLimited').textContent = limited;
+  document.getElementById('liveDenied').textContent = denied;
 }
 
 /* ===================== الطلبات المعلقة ===================== */
@@ -356,16 +495,23 @@ async function rejectRegistration(row){
 
 document.getElementById('refreshPendingBtn').addEventListener('click', loadPendingRequests);
 
+/* بث مباشر لطلبات التسجيل (تظهر فور إرسالها من رابط الواتساب) */
+function subscribePendingRealtime(){
+  sb.channel('admin-pending-registrations')
+    .on('postgres_changes', { event:'*', schema:'public', table:'pending_registrations' }, ()=>{
+      loadPendingRequests();
+      loadEmployeeStats();
+      populateApprovedEmployeesSelect();
+    })
+    .subscribe();
+}
+
 /* ===================== سجل عمليات البوابة ===================== */
 async function loadRecentLogs(){
   const { data, error } = await sb.from('gate_access_logs')
     .select('*').order('created_at', { ascending:false }).limit(25);
   if(error){ console.error(error); return; }
   renderLogsList(data || []);
-
-  const todayStr = new Date().toDateString();
-  const todayCount = (data||[]).filter(l => new Date(l.created_at).toDateString() === todayStr).length;
-  document.getElementById('kpiTodayLogs').textContent = todayCount;
 }
 
 const RESULT_BADGE = {
@@ -383,7 +529,7 @@ function renderLogsList(logs){
   logs.forEach(log=>{
     const item = document.createElement('div');
     item.className = 'flex items-center justify-between p-3 rounded-xl';
-    item.style.background = 'rgba(255,255,255,0.03)';
+    item.style.background = 'rgba(120,160,220,0.05)';
     item.innerHTML = `
       <div>
         <p class="font-bold text-sm mono ltr-num">${log.employee_id}</p>
@@ -397,7 +543,30 @@ function renderLogsList(logs){
 
 document.getElementById('refreshLogsBtn').addEventListener('click', loadRecentLogs);
 
-/* ===================== ترقية مشرف جديد ===================== */
+/* ===================== إحصائيات الموظفين (معتمد/مرفوض) ===================== */
+async function loadEmployeeStats(){
+  const [{ count: approvedCount }, { count: rejectedCount }] = await Promise.all([
+    sb.from('pending_registrations').select('id', { count:'exact', head:true }).eq('status','APPROVED'),
+    sb.from('pending_registrations').select('id', { count:'exact', head:true }).eq('status','REJECTED'),
+  ]);
+  document.getElementById('kpiApproved').textContent = approvedCount ?? 0;
+  document.getElementById('kpiRejected').textContent = rejectedCount ?? 0;
+}
+
+/* ===================== ترقية مشرف جديد (RPC الحالية — كما هي) ===================== */
+async function loadAdminSeatCount(){
+  const { data, error } = await sb.rpc('count_admins');
+  const seatEl = document.getElementById('adminSeatCount');
+  const submitBtn = document.getElementById('promoteBtn');
+  if(error){ console.error(error); seatEl.textContent = '-'; return; }
+
+  seatEl.textContent = data;
+  if(data >= 5){
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'تم الوصول للحد الأقصى (5 مشرفين)';
+  }
+}
+
 async function populateApprovedEmployeesSelect(){
   const { data, error } = await sb.from('pending_registrations')
     .select('employee_id, full_name').eq('status','APPROVED').order('full_name');
@@ -431,28 +600,113 @@ document.getElementById('promoteForm').addEventListener('submit', async (e)=>{
     if(error) throw error;
     showToast('تمت ترقية الموظف لمشرف ✅','success');
     document.getElementById('promoteForm').reset();
+    await loadAdminSeatCount();
   }catch(err){
     console.error(err);
     showToast(err.message || 'تعذّرت الترقية، تأكد من البيانات','error');
+  }finally{
+    btn.disabled = false;
+    if(btn.textContent !== 'تم الوصول للحد الأقصى (5 مشرفين)'){
+      btn.textContent = original;
+    }
+  }
+});
+
+/* ===================== إدارة رتب المشرفين (تحديث مباشر للرتبة) ===================== */
+function setRoleStatus(msg, tone){
+  const el = document.getElementById('roleStatusMsg');
+  el.textContent = msg;
+  el.style.color = tone || 'var(--text-1)';
+  el.classList.remove('hidden');
+}
+
+document.getElementById('roleForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!IS_SUPER_ADMIN){ showToast('صلاحية المشرف الأعلى مطلوبة','error'); return; }
+
+  const btn = document.getElementById('roleBtn');
+  const employeeId = document.getElementById('roleEmployeeId').value.trim();
+  const phone = document.getElementById('rolePhone').value.trim();
+  const choice = document.getElementById('roleSelect').value;
+  const newRole = choice === '__REVOKE__' ? null : choice;
+  if(!employeeId || !phone) return;
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري التنفيذ...`;
+  setRoleStatus('⏳ جاري تحديث الرتبة في قاعدة البيانات...', 'var(--c-waiting)');
+
+  try{
+    /* تطابق الرقم الوظيفي AND رقم الهاتف معاً ثم تحديث الرتبة */
+    const { data, error } = await sb.from('pending_registrations')
+      .update({ role: newRole })
+      .eq('employee_id', employeeId)
+      .eq('phone', phone)
+      .select();
+    if(error) throw error;
+
+    if(!data || data.length === 0){
+      setRoleStatus('⚠️ لم يُعثر على موظف مطابق للرقم الوظيفي ورقم الهاتف.', 'var(--c-limited)');
+      showToast('لا يوجد سجل مطابق','warning');
+      return;
+    }
+
+    if(newRole === null){
+      setRoleStatus(`✅ تم سحب صلاحيات المشرف من ${data[0].full_name || employeeId}.`, 'var(--c-allowed)');
+    }else{
+      setRoleStatus(`✅ أصبح ${data[0].full_name || employeeId} الآن: ${newRole}.`, 'var(--c-allowed)');
+    }
+    showToast('تم تحديث الرتبة ✅','success');
+    document.getElementById('roleForm').reset();
+  }catch(err){
+    console.error(err);
+    setRoleStatus('⛔ تعذّر تحديث الرتبة — تحقق من الصلاحيات/السياسات.', 'var(--c-denied)');
+    showToast(err.message || 'فشل التحديث','error');
   }finally{
     btn.disabled = false;
     btn.textContent = original;
   }
 });
 
+/* بث مباشر لتغيّرات الرتب (يظهر للمشرف الأعلى لحظة أي تعديل) */
+function subscribeRoleChanges(){
+  if(!IS_SUPER_ADMIN) return;
+  sb.channel('admin-role-changes')
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'pending_registrations' }, (payload)=>{
+      const before = payload.old ? payload.old.role : undefined;
+      const after = payload.new ? payload.new.role : undefined;
+      if(before !== after){
+        setRoleStatus(`🔄 تحديث مباشر: ${payload.new.full_name || payload.new.employee_id} → ${after || 'بدون رتبة'}`, 'var(--c-chrome)');
+      }
+    })
+    .subscribe();
+}
+
 /* ===================== تشغيل ===================== */
 loadPendingRequests();
 loadRecentLogs();
 loadGateStatus();
 loadUnresolvedViolations();
+loadEmployeeStats();
+loadAdminSeatCount();
 populateApprovedEmployeesSelect();
+loadTimeframeTotals();
+computeLiveSlots();
+
 subscribeViolations();
 subscribeGateStatus();
+subscribePendingRealtime();
+subscribeRoleChanges();
 
-// تحديث دوري احتياطي كل 30 ثانية (إضافة للـ Realtime لضمان دقة البيانات)
+/* العدّاد الحي: حساب دوري كل 10 دقائق (كما هو مطلوب) */
+setInterval(computeLiveSlots, 10 * 60 * 1000);
+
+/* تحديث دوري احتياطي للإحصائيات */
 setInterval(()=>{
   loadPendingRequests();
   loadRecentLogs();
+  loadEmployeeStats();
+  loadTimeframeTotals();
 }, 30000);
 </script>
 </body>

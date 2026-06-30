@@ -28,26 +28,26 @@
     </div>
   </header>
 
-  <!-- البطاقة الرئيسية -->
+  <!-- البطاقة الرئيسية: صندوق القرار -->
   <main id="mainShell" class="status-shell status-waiting glass chrome-edge w-full max-w-5xl rounded-[28px] p-6 md:p-10 flex flex-col items-center gap-6 transition-all">
 
     <!-- حالة WAITING: عرض الـ QR -->
     <div id="waitingView" class="w-full flex flex-col md:flex-row items-center gap-8 justify-center">
       <div class="flex flex-col items-center gap-4">
         <div class="relative">
-          <div class="bg-white p-4 rounded-3xl shadow-2xl" id="qrWrapper">
+          <div class="qr-frame" id="qrWrapper">
             <div id="qrcode"></div>
           </div>
-          <div class="absolute -top-3 -left-3 w-12 h-12 rounded-full glass chrome-edge flex items-center justify-center mono text-sm font-bold" id="qrTimer">60</div>
+          <div class="absolute -top-3 -left-3 w-12 h-12 rounded-full glass chrome-edge flex items-center justify-center mono text-sm font-bold" id="qrTimer">30</div>
         </div>
         <p class="text-[var(--text-2)] text-sm font-bold">امسح الكود لإثبات صلاحيتك</p>
       </div>
 
       <div class="flex flex-col gap-4 text-center md:text-right max-w-sm">
-        <div class="dot bg-[var(--c-waiting)] mx-auto md:mx-0" style="width:14px;height:14px;border-radius:50%; box-shadow:0 0 18px var(--c-waiting);"></div>
-        <h2 class="text-3xl md:text-4xl font-black">جاهز للفحص</h2>
+        <div class="dot mx-auto md:mx-0" style="width:14px;height:14px;border-radius:50%; background:var(--c-waiting); box-shadow:0 0 18px var(--c-waiting);"></div>
+        <h2 id="standbyTitle" class="text-3xl md:text-4xl font-black" style="color:var(--c-waiting);">🔵 في انتظار مسح الكود...</h2>
         <p class="text-[var(--text-2)] leading-relaxed">
-          الكود يتجدد تلقائياً كل دقيقة لمنع تصويره أو مشاركته. اطلب من الكادر الطبي مسح الكود
+          الكود يتجدد تلقائياً كل 30 ثانية لمنع تصويره أو مشاركته. اطلب من الكادر الطبي مسح الكود
           فوراً عند الوصول للبوابة.
         </p>
       </div>
@@ -60,6 +60,7 @@
         <span class="dot" id="resultDot"></span>
         <span id="resultText"></span>
       </div>
+      <p id="resultName" class="text-xl md:text-2xl font-black"></p>
       <p id="resultSub" class="text-[var(--text-2)] font-bold mono ltr-num"></p>
     </div>
 
@@ -77,8 +78,8 @@
 
 <script>
 /* ===================== تهيئة عامة ===================== */
-const QR_REFRESH_SECONDS = 60;
-const RESULT_DISPLAY_SECONDS = 8;
+const QR_REFRESH_SECONDS = 30;        // تجديد الكود (كما هو مُهندَس)
+const RESULT_DISPLAY_SECONDS = 5;     // ✅ بروتوكول الإعادة التلقائية خلال 5 ثوانٍ
 
 let qrInstance = null;
 let qrCountdown = QR_REFRESH_SECONDS;
@@ -91,7 +92,7 @@ let resultRevertTimeout = null;
   const wrap = document.getElementById('devSig');
   text.split('').forEach((ch,i)=>{
     const span = document.createElement('span');
-    span.textContent = ch;
+    span.textContent = ch === ' ' ? '\u00A0' : ch;
     span.style.animationDelay = (i*0.05)+'s';
     wrap.appendChild(span);
   });
@@ -105,7 +106,7 @@ function tickClock(){
 setInterval(tickClock, 1000);
 tickClock();
 
-/* ===================== توليد QR متجدد كل دقيقة ===================== */
+/* ===================== توليد QR متجدد كل 30 ثانية ===================== */
 function buildVerifyUrl(){
   const ts = Date.now();
   const session = Math.random().toString(36).slice(2,10);
@@ -148,16 +149,19 @@ const STATUS_CONFIG = {
   DENIED:   { icon:'⛔',  label:'مرفوض الدخول',  color:'var(--c-denied)',  shell:'status-denied'  },
 };
 
+/* الوضع الافتراضي: استعداد (توهّج أزرق هادئ) */
 function showWaiting(){
   clearTimeout(resultRevertTimeout);
   document.getElementById('mainShell').className = 'status-shell status-waiting glass chrome-edge w-full max-w-5xl rounded-[28px] p-6 md:p-10 flex flex-col items-center gap-6 transition-all';
   document.getElementById('waitingView').classList.remove('hidden');
   document.getElementById('resultView').classList.add('hidden');
+  document.getElementById('standbyTitle').textContent = '🔵 في انتظار مسح الكود...';
   document.getElementById('gateState').textContent = 'البوابة: مغلقة';
   renderQR();
 }
 
-function showResult(status){
+/* المرحلة 1: التقاط الحالة الحية فوراً (اللون + الاسم + النتيجة) */
+function showResult(status, employeeName){
   const cfg = STATUS_CONFIG[status];
   if(!cfg) return;
   clearTimeout(resultRevertTimeout);
@@ -171,17 +175,24 @@ function showResult(status){
   document.getElementById('resultText').style.color = cfg.color;
   document.getElementById('resultDot').style.background = cfg.color;
   document.getElementById('resultDot').style.boxShadow = `0 0 16px ${cfg.color}`;
-  document.getElementById('resultSub').textContent = new Date().toLocaleTimeString('ar-JO',{hour12:false});
 
+  const nameEl = document.getElementById('resultName');
+  nameEl.textContent = employeeName ? `👤 ${employeeName}` : '';
+  nameEl.style.color = cfg.color;
+
+  document.getElementById('resultSub').textContent = new Date().toLocaleTimeString('ar-JO',{hour12:false});
   document.getElementById('gateState').textContent = status === 'DENIED' ? 'البوابة: مغلقة' : 'البوابة: مفتوحة';
 
-  // الرجوع للوضع الجاهز تلقائياً بعد فترة عرض النتيجة
+  /* المرحلة 2: عدّاد صارم 5 ثوانٍ ثم إعادة ضبط نظيفة على السحابة */
   resultRevertTimeout = setTimeout(async ()=>{
     await sb.from('system_status').update({
       current_scan_status:'WAITING',
+      last_scanned_employee:'',
       gate_open:false,
       updated_at:new Date().toISOString(),
     }).eq('id',1);
+    /* الواجهة سترجع للوضع الافتراضي عبر مستمع الـ Realtime، ونؤمّنها محلياً أيضاً */
+    showWaiting();
   }, RESULT_DISPLAY_SECONDS*1000);
 }
 
@@ -190,7 +201,7 @@ function renderFromStatusRow(row){
   if(row.current_scan_status === 'WAITING'){
     showWaiting();
   } else {
-    showResult(row.current_scan_status);
+    showResult(row.current_scan_status, row.last_scanned_employee);
   }
 }
 
@@ -199,7 +210,7 @@ async function loadInitialStatus(){
   const { data, error } = await sb.from('system_status').select('*').eq('id',1).maybeSingle();
   if(error){ console.error(error); showWaiting(); return; }
   if(!data){
-    await sb.from('system_status').insert({ id:1, gate_open:false, current_scan_status:'WAITING' });
+    await sb.from('system_status').insert({ id:1, gate_open:false, current_scan_status:'WAITING', last_scanned_employee:'' });
     showWaiting();
   } else {
     renderFromStatusRow(data);
@@ -223,9 +234,8 @@ document.getElementById('violationBtn').addEventListener('click', async ()=>{
 
   try{
     await sb.from('violations').insert({ resolved:false });
-    // إغلاق فوري للبوابة كإجراء احترازي لحين تدخل الإدارة
     await sb.from('system_status').update({
-      current_scan_status:'DENIED', gate_open:false, updated_at:new Date().toISOString(),
+      current_scan_status:'DENIED', gate_open:false, last_scanned_employee:'بلاغ مخالفة', updated_at:new Date().toISOString(),
     }).eq('id',1);
     showToast('تم إرسال البلاغ للإدارة فوراً ✅','success');
   }catch(e){

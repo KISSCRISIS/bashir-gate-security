@@ -17,36 +17,49 @@
     <div class="text-center mb-6">
       <div class="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center text-2xl glass chrome-edge mb-3">🩺</div>
       <h1 class="font-black text-xl">بوابة الطوارئ — مستشفى البشير</h1>
-      <p class="text-xs text-[var(--text-2)] mt-1">تحقق الكادر الطبي</p>
+      <p class="text-xs text-[var(--text-2)] mt-1">تحقق الكادر الطبي / التسجيل المسبق</p>
+    </div>
+
+    <!-- بانر وضع الطوارئ اليدوي (عند تعطّل كاميرا الحارس) -->
+    <div id="manualBanner" class="hidden glass chrome-edge rounded-2xl px-4 py-3 mb-4 text-center" style="border-color:rgba(255,157,46,0.4);">
+      <p class="text-xs font-bold" style="color:var(--c-limited);">⚠️ الفحص اليدوي للطوارئ — استخدمه عند تعذّر قراءة الكود</p>
     </div>
 
     <!-- الكود منتهي الصلاحية -->
     <div id="expiredView" class="hidden glass chrome-edge rounded-[28px] p-8 text-center">
       <div class="text-5xl mb-4">⏳</div>
       <h2 class="font-black text-lg mb-2">انتهت صلاحية هذا الكود</h2>
-      <p class="text-[var(--text-2)] leading-relaxed text-sm">
-        الكود يتجدد كل دقيقة لأسباب أمنية. يرجى الرجوع لشاشة الحارس
-        وفتح الكاميرا على الكود الظاهر حالياً.
+      <p class="text-[var(--text-2)] leading-relaxed text-sm mb-5">
+        الكود يتجدد كل 30 ثانية لأسباب أمنية. يمكنك إجراء فحص يدوي طارئ بالأسفل
+        إذا تعذّرت قراءة الكود من كاميرا الحارس.
       </p>
+      <button id="forceManualBtn" class="btn btn-ghost py-3 px-5 rounded-2xl text-sm font-bold">فتح الفحص اليدوي للطوارئ</button>
     </div>
 
-    <!-- إدخال الرقم الوظيفي -->
+    <!-- الفحص: الرقم الوظيفي + رقم الهاتف معاً -->
     <form id="idForm" class="glass chrome-edge rounded-[28px] p-7 flex flex-col gap-4">
       <div>
         <label class="flabel">الرقم الوظيفي</label>
-        <input id="employeeIdInput" type="text" inputmode="numeric" class="field mono ltr-num" placeholder="EMP001" required>
+        <input id="employeeIdInput" type="text" class="field mono ltr-num" placeholder="EMP001" required>
+      </div>
+      <div>
+        <label class="flabel">رقم الهاتف</label>
+        <input id="phoneInput" type="tel" inputmode="numeric" class="field mono ltr-num" placeholder="07XXXXXXXX" required>
       </div>
       <button type="submit" id="idSubmitBtn" class="btn btn-primary py-4 rounded-2xl text-base font-bold">
         تحقّق من صلاحيتي
       </button>
+      <p class="text-[11px] text-[var(--text-3)] text-center leading-relaxed">
+        يتم حفظ بياناتك على هذا الجهاز بعد أول تحقق ناجح لتسريع الدخول لاحقاً.
+      </p>
     </form>
 
     <!-- نموذج التسجيل لأول مرة -->
     <form id="registerForm" class="hidden glass chrome-edge rounded-[28px] p-7 flex flex-col gap-4">
       <div class="text-center mb-2">
         <div class="text-3xl mb-2">📝</div>
-        <h2 class="font-black text-base">تسجيل أول مرة</h2>
-        <p class="text-xs text-[var(--text-2)] mt-1">رقمك الوظيفي غير مسجّل بعد. عبّي بياناتك وراح تحصل على دخول مؤقت فوراً لحين مراجعة الإدارة.</p>
+        <h2 class="font-black text-base">تسجيل مسبق / أول مرة</h2>
+        <p class="text-xs text-[var(--text-2)] mt-1">بياناتك غير معتمدة بعد. عبّي النموذج وراح تحصل على دخول مؤقت فوراً لحين مراجعة الإدارة.</p>
       </div>
       <div>
         <label class="flabel">الاسم الكامل</label>
@@ -54,7 +67,7 @@
       </div>
       <div>
         <label class="flabel">الرقم الوظيفي</label>
-        <input id="regEmployeeId" type="text" class="field mono ltr-num" readonly>
+        <input id="regEmployeeId" type="text" class="field mono ltr-num" required>
       </div>
       <div>
         <label class="flabel">رقم الهاتف</label>
@@ -80,9 +93,11 @@
   </div>
 
 <script>
-/* ===================== فحص صلاحية التوكن (الكود متجدد كل 60 ثانية) ===================== */
-const TOKEN_MAX_AGE_MS = 90 * 1000; // هامش أمان 90 ثانية
+/* ===================== مفاتيح وثوابت ===================== */
+const TOKEN_MAX_AGE_MS = 45 * 1000;            // هامش أمان (الكود يتجدد كل 30 ثانية)
+const CREDS_KEY = 'albashir_verify_creds';     // تخزين محلي للبيانات المتحقّقة
 
+/* ===================== فحص صلاحية التوكن ===================== */
 function isTokenValid(){
   const token = new URLSearchParams(window.location.search).get('token');
   if(!token) return false;
@@ -102,14 +117,38 @@ function showView(id){
   });
 }
 
-if(!isTokenValid()){
-  showView('expiredView');
+/* ===================== التخزين المحلي للبيانات ===================== */
+function cacheCreds(employeeId, phone){
+  try{ localStorage.setItem(CREDS_KEY, JSON.stringify({ employee_id:employeeId, phone })); }catch(e){}
+}
+function loadCachedCreds(){
+  try{ return JSON.parse(localStorage.getItem(CREDS_KEY)); }catch(e){ return null; }
 }
 
-/* ===================== دوال مساعدة لتحديث حالة البوابة ===================== */
-async function pushGateResult(employeeId, status){
+/* استرجاع البيانات المحفوظة تلقائياً لتسريع الدخول */
+(function prefillFromCache(){
+  const c = loadCachedCreds();
+  if(c){
+    if(c.employee_id) document.getElementById('employeeIdInput').value = c.employee_id;
+    if(c.phone) document.getElementById('phoneInput').value = c.phone;
+  }
+})();
+
+/* عرض الواجهة المناسبة حسب صلاحية الكود */
+if(!isTokenValid()){
+  document.getElementById('manualBanner').classList.remove('hidden');
+  showView('expiredView');
+}
+document.getElementById('forceManualBtn').addEventListener('click', ()=>{
+  document.getElementById('manualBanner').classList.remove('hidden');
+  showView('idForm');
+});
+
+/* ===================== تحديث حالة البوابة + السجل ===================== */
+async function pushGateResult(employeeId, status, displayName){
   await sb.from('system_status').update({
     current_scan_status: status,
+    last_scanned_employee: displayName || employeeId,
     gate_open: status !== 'DENIED',
     updated_at: new Date().toISOString(),
   }).eq('id',1);
@@ -128,48 +167,51 @@ function showOutcome({icon, title, sub, tone}){
   document.getElementById('outcomeSub').textContent = sub;
 }
 
-/* ===================== التحقق من الرقم الوظيفي ===================== */
-let currentEmployeeId = null;
-
+/* ===================== الفحص اليدوي: الرقم الوظيفي + الهاتف ===================== */
 document.getElementById('idForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const btn = document.getElementById('idSubmitBtn');
   const employeeId = document.getElementById('employeeIdInput').value.trim();
-  if(!employeeId) return;
-  currentEmployeeId = employeeId;
+  const phone = document.getElementById('phoneInput').value.trim();
+  if(!employeeId || !phone) return;
 
   btn.disabled = true;
   const original = btn.textContent;
   btn.innerHTML = `<span class="spinner" style="display:inline-block;vertical-align:middle;margin-left:8px;"></span> جاري التحقق...`;
 
   try{
-    const { data, error } = await sb.rpc('check_registration_status', { p_employee_id: employeeId });
+    /* البحث عن سجل الموظف بالرقم الوظيفي */
+    const { data, error } = await sb.from('pending_registrations')
+      .select('*').eq('employee_id', employeeId).order('created_at',{ascending:false}).limit(1);
     if(error) throw error;
 
-    if(!data || data.length === 0){
-      // غير مسجل أبداً -> نموذج تسجيل أول مرة
-      document.getElementById('regEmployeeId').value = employeeId;
-      showView('registerForm');
+    const record = (data && data.length) ? data[0] : null;
+
+    /* لا يوجد سجل إطلاقاً → فشل التحقق → نموذج التسجيل (مع تعبئة المحاولة) */
+    if(!record){
+      openRegisterPrefilled(employeeId, phone);
       return;
     }
 
-    const record = data[0];
-
+    /* معتمد: لا بد من تطابق الرقم الوظيفي AND رقم الهاتف معاً */
     if(record.status === 'APPROVED'){
+      if((record.phone || '').trim() !== phone){
+        showToast('رقم الهاتف لا يطابق السجل المعتمد لهذا الرقم الوظيفي','error');
+        return;
+      }
       const status = record.access_level === 'FULL_ACCESS' ? 'ALLOWED' : 'LIMITED';
-      await pushGateResult(employeeId, status);
+      cacheCreds(employeeId, phone);              // ✅ حفظ محلي بعد تحقق ناجح
+      await pushGateResult(employeeId, status, record.full_name);
       if(status === 'ALLOWED'){
         showOutcome({icon:'✅', title:'تم منحك الدخول', sub:'توجّه للحارس الآن، الشاشة عنده تظهر الموافقة.', tone:'var(--c-allowed)'});
       }else{
         showOutcome({icon:'⚠️', title:'دخول محدود', sub:'مسموح لك بدخول محدود بالقسم/الوردية. توجّه للحارس.', tone:'var(--c-limited)'});
       }
     } else if(record.status === 'PENDING'){
-      // طلبه قيد المراجعة - نمنحه دخول مؤقت محدود في كل مرة لحين البت بطلبه
-      await pushGateResult(employeeId, 'LIMITED');
-      showOutcome({icon:'⏳', title:'طلبك قيد المراجعة', sub:'تم منحك دخولاً مؤقتاً محدوداً لحين مراجعة الإدارة لبياناتك. توجّه للحارس.', tone:'var(--c-limited)'});
+      await pushGateResult(employeeId, 'LIMITED', record.full_name);
+      showOutcome({icon:'⏳', title:'طلبك قيد المراجعة', sub:'تم منحك دخولاً مؤقتاً محدوداً لحين مراجعة الإدارة. توجّه للحارس.', tone:'var(--c-limited)'});
     } else {
-      // REJECTED
-      await pushGateResult(employeeId, 'DENIED');
+      await pushGateResult(employeeId, 'DENIED', record.full_name);
       showOutcome({icon:'⛔', title:'تم رفض الدخول', sub:'طلب تصريحك مرفوض. يرجى التواصل مع إدارة الموارد البشرية.', tone:'var(--c-denied)'});
     }
   }catch(err){
@@ -181,7 +223,13 @@ document.getElementById('idForm').addEventListener('submit', async (e)=>{
   }
 });
 
-/* ===================== تسجيل أول مرة ===================== */
+/* ===================== التسجيل (Fail-Safe) ===================== */
+function openRegisterPrefilled(employeeId, phone){
+  document.getElementById('regEmployeeId').value = employeeId || '';
+  document.getElementById('regPhone').value = phone || '';
+  showView('registerForm');
+}
+
 document.getElementById('cancelRegisterBtn').addEventListener('click', ()=>{
   showView('idForm');
 });
@@ -212,7 +260,9 @@ document.getElementById('registerForm').addEventListener('submit', async (e)=>{
       throw error;
     }
 
-    await pushGateResult(payload.employee_id, 'LIMITED');
+    cacheCreds(payload.employee_id, payload.phone);   // ✅ حفظ محلي للبيانات
+    /* توكن مؤقت لمرة واحدة لفتح البوابة فوراً (LIMITED) — صفر تأخير للطوارئ */
+    await pushGateResult(payload.employee_id, 'LIMITED', payload.full_name);
     showOutcome({
       icon:'🎉',
       title:'تم استلام طلبك',

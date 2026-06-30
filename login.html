@@ -77,7 +77,7 @@
   const wrap = document.getElementById('floatSig');
   text.split('').forEach((ch,i)=>{
     const span = document.createElement('span');
-    span.textContent = ch;
+    span.textContent = ch === ' ' ? '\u00A0' : ch;
     span.style.animationDelay = (i*0.06)+'s';
     wrap.appendChild(span);
   });
