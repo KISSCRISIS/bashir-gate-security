@@ -1,10 +1,9 @@
 /* ==========================================================================
    نظام أمن بوابة الطوارئ - مستشفى البشير
-   إعداد Supabase المشترك + دوال مساعدة
-   Dev: Dr. Alaa Aqrabawi
+   إعداد Supabase المشترك + دوال مساعدة (نسخة محدثة ومطورة بالكامل)
    ========================================================================== */
 
-// ⚠️ بيانات الاتصال بـ Supabase (Project URL + Anon/Publishable Key)
+// ⚠️ بيانات الاتصال بـ Supabase (تأكد من الحفاظ على قيم مشروعك الفعلي)
 const SUPABASE_URL = 'https://ekwxktlgrlzzzwtxhbwa.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_33hRtbFZqTLejkj1d8zGkQ_Zn-7v734';
 
@@ -14,7 +13,25 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 /* -------------------------------------------------------------------------
-   Toast بسيط لعرض رسائل النجاح/الخطأ بدون مكتبات خارجية
+   تحديث دالة إرسال النتيجة لدعم بث اسم الموظف لحظياً لشاشة الحارس
+   ------------------------------------------------------------------------- */
+async function pushGateResult(employeeId, actionResult, employeeName = '') {
+  try {
+    // استدعاء الـ RPC المحدث الذي يعالج الأعمدة الجديدة (last_scanned_employee)
+    const { error } = await sb.rpc('push_gate_result', {
+      p_employee_id: employeeId,
+      p_result: actionResult,
+      p_employee_name: employeeName
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error('فشل إرسال التحديث للسحابة:', err);
+    showToast('خطأ في الاتصال بالبوابة السحابية', 'error');
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Toast بسيط لعرض رسائل النجاح/الخطأ بتصميم متناسق مع الثيم الداكن الجديد
    ------------------------------------------------------------------------- */
 function showToast(message, type = 'info') {
   const colors = {
@@ -23,24 +40,44 @@ function showToast(message, type = 'info') {
     info: { bg: '#1f2b45', fg: '#eef2f8' },
     warning: { bg: '#a3590a', fg: '#fff5e8' },
   };
+  
   const c = colors[type] || colors.info;
   const el = document.createElement('div');
-  el.className = 'toast';
-  el.style.background = c.bg;
-  el.style.color = c.fg;
-  el.style.border = '1px solid rgba(255,255,255,0.12)';
+  el.style.cssText = `
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: ${c.bg}; color: ${c.fg}; padding: 12px 24px; border-radius: 16px;
+    font-size: 14px; font-weight: 700; z-index: 9999; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1); direction: rtl; font-family: 'Tajawal', sans-serif;
+    transition: all 0.3s ease; opacity: 0;
+  `;
   el.textContent = message;
   document.body.appendChild(el);
+  
+  // تأثير الظهور والإخفاء
+  setTimeout(() => { el.style.opacity = '1'; }, 50);
   setTimeout(() => {
-    el.style.transition = 'opacity .35s ease, transform .35s ease';
     el.style.opacity = '0';
-    el.style.transform = 'translateY(10px)';
-    setTimeout(() => el.remove(), 380);
-  }, 3200);
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
 }
 
 /* -------------------------------------------------------------------------
-   تحويل وقت ISO إلى صيغة عربية مقروءة
+   حفظ محلي لبيانات الكادر على الجوال لتجنب إعادة إدخالها عند كل فحص
+   ------------------------------------------------------------------------- */
+const CREDS_KEY = 'bashir_gate_cached_creds';
+
+function cacheCreds(employeeId, phone) {
+  localStorage.setItem(CREDS_KEY, JSON.stringify({ employeeId, phone }));
+}
+
+function getCachedCreds() {
+  const raw = localStorage.getItem(CREDS_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+/* -------------------------------------------------------------------------
+   دوال مساعدة لتنسيق الوقت والتواريخ للغة العربية في السجلات واللوحات
    ------------------------------------------------------------------------- */
 function formatArabicTime(isoString) {
   try {
@@ -54,8 +91,9 @@ function formatArabicTime(isoString) {
 }
 
 /* -------------------------------------------------------------------------
-   إدارة جلسة الأدمن المحلية (sessionStorage) — حماية واجهة فقط
-   ملاحظة أمنية: هذا تحقق على مستوى الواجهة وليس بديلاً عن RLS الحقيقي.
+   إدارة جلسة الأدمن المحلية (sessionStorage) — حماية واجهة المستخدم فقط
+   ملاحظة أمنية: هذا تحقق على مستوى الواجهة لغايات الانتقال الفوري، 
+   والحماية الحقيقية تتم داخل قاعدة البيانات عبر دوال RPC المقفلة في schema.sql.
    ------------------------------------------------------------------------- */
 const ADMIN_SESSION_KEY = 'bashir_gate_admin_session';
 
@@ -69,7 +107,7 @@ function getAdminSession() {
   if (!raw) return null;
   try {
     const data = JSON.parse(raw);
-    // انتهاء الجلسة بعد 8 ساعات (وردية كاملة) كحد أقصى
+    // انتهاء الجلسة التلقائي بعد 8 ساعات (مدة الوردية/الشيفت الطبي الكامل)
     const EIGHT_HOURS = 8 * 60 * 60 * 1000;
     if (Date.now() - data.loginAt > EIGHT_HOURS) {
       sessionStorage.removeItem(ADMIN_SESSION_KEY);
@@ -85,11 +123,11 @@ function clearAdminSession() {
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
 }
 
-/* يستخدم في أعلى admin_dashboard.html لحماية الوصول */
 function requireAdminSession() {
-  const session = getAdminSession();
-  if (!session) {
+  const s = getAdminSession();
+  if (!s) {
     window.location.replace('login.html');
+    return null;
   }
-  return session;
+  return s;
 }
